@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'">
+  <title>Points Plugin Settings</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      max-width: 600px;
+      margin: 0 auto;
+      padding: 32px 16px;
+      color: #333;
+      background: #f8f9fa;
+    }
+    h1 { font-size: 24px; margin-bottom: 24px; color: #764ba2; }
+    .form-group { margin-bottom: 20px; }
+    label {
+      display: block;
+      font-weight: 600;
+      margin-bottom: 6px;
+      font-size: 14px;
+    }
+    input[type="number"], input[type="checkbox"] {
+      font-size: 14px;
+    }
+    input[type="number"] {
+      width: 100%;
+      max-width: 200px;
+      padding: 8px 12px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+    }
+    .checkbox-label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: normal;
+      cursor: pointer;
+    }
+    .programs-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    button {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      padding: 10px 24px;
+      border-radius: 6px;
+      font-size: 14px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    button:hover { opacity: 0.9; }
+    #status {
+      margin-top: 12px;
+      color: #28a745;
+      font-size: 13px;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <h1>⚙️ Points Plugin Settings</h1>
+  <form id="settings-form">
+    <div class="form-group">
+      <label>
+        <span class="checkbox-label">
+          <input type="checkbox" id="enable-notifications" />
+          Enable popup notifications on shopping pages
+        </span>
+      </label>
+    </div>
+    <div class="form-group">
+      <label for="min-points">Minimum points threshold</label>
+      <input type="number" id="min-points" min="0" max="10000" step="10" />
+    </div>
+    <div class="form-group">
+      <label>Enabled Programs</label>
+      <div class="programs-list" id="programs-list"></div>
+    </div>
+    <button type="submit">Save Settings</button>
+    <div id="status" role="status">Settings saved!</div>
+  </form>
+  <script src="options.js"></script>
+</body>
+</html>

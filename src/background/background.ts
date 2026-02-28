@@ -1,4 +1,5 @@
 import {
+  ActivationUrlResultMessage,
   ExtensionMessage,
   MessageType,
   PointsBalance,
@@ -9,6 +10,7 @@ import {
   DEFAULT_SETTINGS,
   KNOWN_PROGRAMS,
 } from '../types/index';
+import { getAdapter } from './adapters';
 
 /** Gets stored point balances from extension storage */
 export async function getStoredBalances(): Promise<PointsBalance[]> {
@@ -37,7 +39,14 @@ export async function upsertBalance(newBalance: PointsBalance): Promise<void> {
 export async function getSettings(): Promise<Settings> {
   const result = await chrome.storage.sync.get(StorageKey.SETTINGS);
   const stored = result[StorageKey.SETTINGS] as Partial<Settings> | undefined;
-  return { ...DEFAULT_SETTINGS, ...stored };
+  return {
+    ...DEFAULT_SETTINGS,
+    ...stored,
+    pointValuationsCents: {
+      ...DEFAULT_SETTINGS.pointValuationsCents,
+      ...stored?.pointValuationsCents,
+    },
+  };
 }
 
 /** Finds a points program matching the given URL */
@@ -61,37 +70,53 @@ export function calculateEstimatedPoints(
   return Math.floor(program.pointsPerDollar * estimatedSpend);
 }
 
-/** Finds shopping opportunities for a given URL */
+/**
+ * Finds shopping opportunities for a merchant URL.
+ * This is intentionally catalog-first and does not scrape merchant pages.
+ */
 export async function findOpportunities(
   url: string
 ): Promise<ShoppingOpportunity[]> {
   const settings = await getSettings();
-  const program = findProgramForUrl(url);
+  const merchantHost = new URL(url).hostname;
+  const enabledPrograms = settings.enabledPrograms.length > 0
+    ? KNOWN_PROGRAMS.filter((program) => settings.enabledPrograms.includes(program.id))
+    : KNOWN_PROGRAMS;
 
-  if (!program) {
-    return [];
-  }
+  const opportunities = enabledPrograms
+    .filter((program) => !merchantHost.includes(program.retailerDomain))
+    .map((program) => {
+      const estimatedPoints = calculateEstimatedPoints(program);
+      const valuation = settings.pointValuationsCents[program.id] ?? 1;
 
-  if (
-    settings.enabledPrograms.length > 0 &&
-    !settings.enabledPrograms.includes(program.id)
-  ) {
-    return [];
-  }
+      return {
+        url,
+        retailerName: program.name,
+        estimatedPoints,
+        estimatedValueCents: Math.round(estimatedPoints * valuation),
+        programId: program.id,
+      };
+    })
+    .filter((opportunity) => opportunity.estimatedPoints >= settings.minimumPointsThreshold)
+    .sort((a, b) => (b.estimatedValueCents ?? 0) - (a.estimatedValueCents ?? 0));
 
-  const estimatedPoints = calculateEstimatedPoints(program);
-  if (estimatedPoints < settings.minimumPointsThreshold) {
-    return [];
-  }
+  return opportunities.slice(0, 5);
+}
 
-  return [
-    {
-      url,
-      retailerName: program.name,
-      estimatedPoints,
-      programId: program.id,
-    },
-  ];
+export async function buildActivationUrl(programId: string, merchantUrl: string): Promise<ActivationUrlResultMessage> {
+  const storeKey = new URL(merchantUrl).hostname.replace(/^www\./, '');
+  const adapter = getAdapter(programId);
+  const activationUrl = await adapter.buildActivationUrl(storeKey, merchantUrl);
+  const attributionRisk = adapter.detectAttributionRisk
+    ? await adapter.detectAttributionRisk(merchantUrl)
+    : 'none';
+
+  return {
+    type: MessageType.ACTIVATION_URL_RESULT,
+    programId,
+    activationUrl,
+    attributionRisk,
+  };
 }
 
 /** Handles incoming messages from other extension components */
@@ -110,7 +135,15 @@ export function handleMessage(
           });
         })
         .catch(console.error);
-      return true; // Keep message channel open for async response
+      return true;
+
+    case MessageType.BUILD_ACTIVATION_URL:
+      buildActivationUrl(message.programId, message.merchantUrl)
+        .then((result) => {
+          sendResponse(result);
+        })
+        .catch(console.error);
+      return true;
 
     case MessageType.GET_BALANCES:
       getStoredBalances()
@@ -147,15 +180,15 @@ export function handleMessage(
 export function handleInstalled(
   details: chrome.runtime.InstalledDetails
 ): void {
-  if (details.reason === 'install') {
+  if (details.reason === chrome.runtime.OnInstalledReason.INSTALL) {
     console.log('Points Plugin installed');
     void chrome.storage.sync.set({ [StorageKey.SETTINGS]: DEFAULT_SETTINGS });
-  } else if (details.reason === 'update') {
+    void chrome.runtime.openOptionsPage();
+  } else if (details.reason === chrome.runtime.OnInstalledReason.UPDATE) {
     console.log(`Points Plugin updated from version ${details.previousVersion ?? 'unknown'}`);
   }
 }
 
-// Register event listeners (only when running as actual extension)
 if (typeof chrome !== 'undefined' && chrome.runtime) {
   chrome.runtime.onMessage.addListener(handleMessage);
   chrome.runtime.onInstalled.addListener(handleInstalled);

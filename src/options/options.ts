@@ -9,7 +9,14 @@ import {
 export async function getSettings(): Promise<Settings> {
   const result = await chrome.storage.sync.get(StorageKey.SETTINGS);
   const stored = result[StorageKey.SETTINGS] as Partial<Settings> | undefined;
-  return { ...DEFAULT_SETTINGS, ...stored };
+  return {
+    ...DEFAULT_SETTINGS,
+    ...stored,
+    pointValuationsCents: {
+      ...DEFAULT_SETTINGS.pointValuationsCents,
+      ...stored?.pointValuationsCents,
+    },
+  };
 }
 
 /** Saves settings to storage */
@@ -27,6 +34,8 @@ export function readFormValues(): Settings {
   ) as HTMLInputElement | null;
 
   const enabledPrograms: string[] = [];
+  const pointValuationsCents: Record<string, number> = {};
+
   KNOWN_PROGRAMS.forEach((program) => {
     const checkbox = document.getElementById(
       `program-${program.id}`
@@ -34,12 +43,20 @@ export function readFormValues(): Settings {
     if (checkbox?.checked) {
       enabledPrograms.push(program.id);
     }
+
+    const valuationInput = document.getElementById(
+      `valuation-${program.id}`
+    ) as HTMLInputElement | null;
+    const defaultValuation = DEFAULT_SETTINGS.pointValuationsCents[program.id] ?? 1;
+    pointValuationsCents[program.id] = parseFloat(valuationInput?.value ?? `${defaultValuation}`) || defaultValuation;
   });
 
   return {
     enableNotifications: notificationsEl?.checked ?? DEFAULT_SETTINGS.enableNotifications,
     minimumPointsThreshold: parseInt(minPointsEl?.value ?? '0', 10) || DEFAULT_SETTINGS.minimumPointsThreshold,
     enabledPrograms,
+    onboardingCompleted: true,
+    pointValuationsCents,
   };
 }
 
@@ -60,6 +77,9 @@ export function populateForm(settings: Settings): void {
   if (programsList) {
     programsList.innerHTML = '';
     KNOWN_PROGRAMS.forEach((program) => {
+      const row = document.createElement('div');
+      row.className = 'program-row';
+
       const label = document.createElement('label');
       label.className = 'checkbox-label';
 
@@ -72,7 +92,19 @@ export function populateForm(settings: Settings): void {
 
       label.appendChild(checkbox);
       label.appendChild(document.createTextNode(program.name));
-      programsList.appendChild(label);
+
+      const valuation = document.createElement('input');
+      valuation.type = 'number';
+      valuation.step = '0.1';
+      valuation.min = '0';
+      valuation.id = `valuation-${program.id}`;
+      valuation.value = String(settings.pointValuationsCents[program.id] ?? 1);
+      valuation.className = 'valuation-input';
+      valuation.setAttribute('aria-label', `${program.name} point value (cents)`);
+
+      row.appendChild(label);
+      row.appendChild(valuation);
+      programsList.appendChild(row);
     });
   }
 }
@@ -84,6 +116,7 @@ export async function initOptions(): Promise<void> {
 
   const form = document.getElementById('settings-form');
   const statusEl = document.getElementById('status');
+  const addProgramButton = document.getElementById('add-program');
 
   form?.addEventListener('submit', (e) => {
     e.preventDefault();
@@ -94,6 +127,15 @@ export async function initOptions(): Promise<void> {
         setTimeout(() => {
           statusEl.style.display = 'none';
         }, 2000);
+      }
+    });
+  });
+
+  addProgramButton?.addEventListener('click', () => {
+    KNOWN_PROGRAMS.forEach((program) => {
+      const checkbox = document.getElementById(`program-${program.id}`) as HTMLInputElement | null;
+      if (checkbox) {
+        checkbox.checked = true;
       }
     });
   });

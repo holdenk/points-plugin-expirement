@@ -1,13 +1,15 @@
 import {
+  ActivationUrlResultMessage,
   BalancesResultMessage,
+  BuildActivationUrlMessage,
   ExtensionMessage,
   GetBalancesMessage,
   GetOpportunitiesMessage,
+  KNOWN_PROGRAMS,
   MessageType,
   OpportunitiesResultMessage,
   PointsBalance,
   ShoppingOpportunity,
-  KNOWN_PROGRAMS,
 } from '../types/index';
 
 /** Sends a message to the background script */
@@ -19,6 +21,63 @@ export function sendMessage(message: ExtensionMessage): Promise<ExtensionMessage
 export async function getActiveTabUrl(): Promise<string | null> {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   return tab?.url ?? null;
+}
+
+function getProgram(programId: string): (typeof KNOWN_PROGRAMS)[number] | undefined {
+  return KNOWN_PROGRAMS.find((program) => program.id === programId);
+}
+
+async function activateProgram(opportunity: ShoppingOpportunity): Promise<void> {
+  const result = (await sendMessage({
+    type: MessageType.BUILD_ACTIVATION_URL,
+    programId: opportunity.programId,
+    merchantUrl: opportunity.url,
+  } as BuildActivationUrlMessage)) as ActivationUrlResultMessage;
+
+  if (result.attributionRisk === 'possible_affiliate_tag') {
+    const proceed = window.confirm(
+      'Existing affiliate parameters were detected in the URL. Continue with explicit activation?'
+    );
+    if (!proceed) {
+      return;
+    }
+  }
+
+  await chrome.tabs.create({ url: result.activationUrl });
+}
+
+function addProgramActions(card: HTMLElement, opportunity: ShoppingOpportunity): void {
+  const actions = document.createElement('div');
+  actions.className = 'card-actions';
+
+  const activateButton = document.createElement('button');
+  activateButton.className = 'activate-btn';
+  activateButton.textContent = 'Activate';
+  activateButton.addEventListener('click', () => {
+    void activateProgram(opportunity);
+  });
+
+  const program = getProgram(opportunity.programId);
+  if (program?.signupUrl) {
+    const signupLink = document.createElement('a');
+    signupLink.href = program.signupUrl;
+    signupLink.textContent = 'Sign up';
+    signupLink.target = '_blank';
+    signupLink.rel = 'noreferrer';
+    actions.appendChild(signupLink);
+  }
+
+  if (program?.loginUrl) {
+    const loginLink = document.createElement('a');
+    loginLink.href = program.loginUrl;
+    loginLink.textContent = 'Login';
+    loginLink.target = '_blank';
+    loginLink.rel = 'noreferrer';
+    actions.appendChild(loginLink);
+  }
+
+  actions.appendChild(activateButton);
+  card.appendChild(actions);
 }
 
 /** Renders opportunity cards to the DOM */
@@ -48,6 +107,15 @@ export function renderOpportunities(
 
     card.appendChild(retailer);
     card.appendChild(points);
+
+    if (opp.estimatedValueCents) {
+      const value = document.createElement('div');
+      value.className = 'points';
+      value.textContent = `Estimated value: $${(opp.estimatedValueCents / 100).toFixed(2)}`;
+      card.appendChild(value);
+    }
+
+    addProgramActions(card, opp);
     container.appendChild(card);
   });
 }
@@ -128,7 +196,6 @@ export async function initPopup(): Promise<void> {
     return;
   }
 
-  // Set up options link
   optionsLink.addEventListener('click', (e) => {
     e.preventDefault();
     void chrome.runtime.openOptionsPage();
@@ -137,7 +204,6 @@ export async function initPopup(): Promise<void> {
   try {
     const url = await getActiveTabUrl();
 
-    // Fetch opportunities and balances in parallel
     const [opportunitiesResponse, balancesResponse] = await Promise.all([
       url
         ? (sendMessage({
@@ -160,16 +226,12 @@ export async function initPopup(): Promise<void> {
 
     renderBalances(balancesResponse.balances, balancesList);
   } catch (err) {
-    showError(
-      'Failed to load data. Please try again.',
-      errorEl
-    );
+    showError('Failed to load data. Please try again.', errorEl);
     loadingEl.style.display = 'none';
     console.error(err);
   }
 }
 
-// Initialize when DOM is ready
 if (typeof document !== 'undefined') {
   document.addEventListener('DOMContentLoaded', () => {
     void initPopup();

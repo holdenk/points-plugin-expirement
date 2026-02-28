@@ -38,9 +38,9 @@ describe('populateForm', () => {
   });
 
   it('only checks specified programs', () => {
-    populateForm({ ...DEFAULT_SETTINGS, enabledPrograms: ['amazon-rewards'] });
-    const amazonCb = document.getElementById('program-amazon-rewards') as HTMLInputElement;
-    const targetCb = document.getElementById('program-target-circle') as HTMLInputElement;
+    populateForm({ ...DEFAULT_SETTINGS, enabledPrograms: ['aa-eshopping'] });
+    const amazonCb = document.getElementById('program-aa-eshopping') as HTMLInputElement;
+    const targetCb = document.getElementById('program-united-shopping') as HTMLInputElement;
     expect(amazonCb.checked).toBe(true);
     expect(targetCb.checked).toBe(false);
   });
@@ -73,10 +73,10 @@ describe('readFormValues', () => {
   });
 
   it('handles unchecked programs', () => {
-    const targetCb = document.getElementById('program-target-circle') as HTMLInputElement;
+    const targetCb = document.getElementById('program-united-shopping') as HTMLInputElement;
     targetCb.checked = false;
     const values = readFormValues();
-    expect(values.enabledPrograms).not.toContain('target-circle');
+    expect(values.enabledPrograms).not.toContain('united-shopping');
   });
 });
 

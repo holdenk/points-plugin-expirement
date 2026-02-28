@@ -1,10 +1,17 @@
+/** The type of reward currency a program uses */
+export enum CurrencyType {
+  POINTS = 'points',
+  PERCENT = 'percent',
+  CASHBACK = 'cashback',
+}
+
 /** Represents a points program at a retailer */
 export interface PointsProgram {
   id: string;
   name: string;
   retailerDomain: string;
   pointsPerDollar: number;
-  currency: string;
+  currency: CurrencyType;
 }
 
 /** Represents the user's balance in a points program */
@@ -109,20 +116,20 @@ export const KNOWN_PROGRAMS: PointsProgram[] = [
     name: 'Amazon Rewards',
     retailerDomain: 'amazon.com',
     pointsPerDollar: 3,
-    currency: 'points',
+    currency: CurrencyType.POINTS,
   },
   {
     id: 'target-circle',
     name: 'Target Circle',
     retailerDomain: 'target.com',
     pointsPerDollar: 1,
-    currency: 'percent',
+    currency: CurrencyType.PERCENT,
   },
   {
     id: 'walmart-rewards',
     name: 'Walmart Rewards',
     retailerDomain: 'walmart.com',
     pointsPerDollar: 5,
-    currency: 'cash-back',
+    currency: CurrencyType.CASHBACK,
   },
 ];

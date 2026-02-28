@@ -10,6 +10,7 @@ import {
   handleInstalled,
 } from '../src/background/background';
 import {
+  CurrencyType,
   MessageType,
   StorageKey,
   DEFAULT_SETTINGS,
@@ -46,7 +47,7 @@ describe('findProgramForUrl', () => {
         name: 'Custom Program',
         retailerDomain: 'custom.com',
         pointsPerDollar: 2,
-        currency: 'points',
+        currency: CurrencyType.POINTS,
       },
     ];
     const program = findProgramForUrl('https://custom.com/shop', customPrograms);

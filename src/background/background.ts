@@ -151,7 +151,7 @@ export function handleInstalled(
     console.log('Points Plugin installed');
     void chrome.storage.sync.set({ [StorageKey.SETTINGS]: DEFAULT_SETTINGS });
   } else if (details.reason === 'update') {
-    console.log(`Points Plugin updated to version ${details.previousVersion ?? 'unknown'}`);
+    console.log(`Points Plugin updated from version ${details.previousVersion ?? 'unknown'}`);
   }
 }
 

@@ -48,12 +48,19 @@ export function readFormValues(): Settings {
       `valuation-${program.id}`
     ) as HTMLInputElement | null;
     const defaultValuation = DEFAULT_SETTINGS.pointValuationsCents[program.id] ?? 1;
-    pointValuationsCents[program.id] = parseFloat(valuationInput?.value ?? `${defaultValuation}`) || defaultValuation;
+    const parsedValuation = parseFloat(valuationInput?.value ?? '');
+    pointValuationsCents[program.id] = Number.isNaN(parsedValuation)
+      ? defaultValuation
+      : parsedValuation;
   });
+
+  const parsedMinPoints = parseInt(minPointsEl?.value ?? '', 10);
 
   return {
     enableNotifications: notificationsEl?.checked ?? DEFAULT_SETTINGS.enableNotifications,
-    minimumPointsThreshold: parseInt(minPointsEl?.value ?? '0', 10) || DEFAULT_SETTINGS.minimumPointsThreshold,
+    minimumPointsThreshold: Number.isNaN(parsedMinPoints)
+      ? DEFAULT_SETTINGS.minimumPointsThreshold
+      : parsedMinPoints,
     enabledPrograms,
     onboardingCompleted: true,
     pointValuationsCents,

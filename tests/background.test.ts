@@ -37,10 +37,20 @@ describe('getSettings', () => {
 });
 
 describe('findOpportunities', () => {
-  it('returns sorted opportunities for merchant URL', async () => {
+  it('returns sorted opportunities for known merchant URL', async () => {
     const opps = await findOpportunities('https://www.nike.com');
     expect(opps.length).toBeGreaterThan(0);
-    expect(opps[0].estimatedValueCents).toBeGreaterThan(0);
+    expect(opps[0].estimatedValueCents).toBeGreaterThanOrEqual(opps[1]?.estimatedValueCents ?? 0);
+  });
+
+  it('returns no opportunities for non-merchant URL', async () => {
+    const opps = await findOpportunities('https://www.wikipedia.org');
+    expect(opps).toEqual([]);
+  });
+
+  it('returns no opportunities for invalid URL input', async () => {
+    const opps = await findOpportunities('not-a-url');
+    expect(opps).toEqual([]);
   });
 
   it('filters by enabled programs', async () => {
@@ -70,7 +80,6 @@ describe('findOpportunities', () => {
     expect(opps).toHaveLength(2);
     expect(opps.map((opp) => opp.programId).sort()).toEqual(['aa-eshopping', 'united-shopping']);
   });
-
 });
 
 describe('buildActivationUrl', () => {
@@ -89,6 +98,17 @@ describe('buildActivationUrl', () => {
     expect(activationUrl.searchParams.get('target')).toBe('https://www.nike.com/');
   });
 
+  it('returns structured error when activation base URL is missing', async () => {
+    const result = await buildActivationUrl('delta-skymiles-shopping', 'https://www.nike.com/');
+    expect(result.error).toContain('Missing activation base URL');
+    expect(result.activationUrl).toBe('');
+  });
+
+  it('returns structured error for invalid merchant URL', async () => {
+    const result = await buildActivationUrl('united-shopping', 'not-a-url');
+    expect(result.error).toBe('Invalid merchant URL');
+    expect(result.activationUrl).toBe('');
+  });
 });
 
 describe('handleMessage', () => {

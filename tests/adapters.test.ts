@@ -33,4 +33,20 @@ describe('adapter class hierarchy', () => {
       ])
     );
   });
+
+  it('handles partial settings storage in isEnabled without throwing', async () => {
+    await chrome.storage.sync.set({
+      settings: { enableNotifications: true },
+    });
+
+    const unitedAdapter = new GenericProgramAdapter('united-shopping');
+    await expect(unitedAdapter.isEnabled()).resolves.toBe(true);
+  });
+
+  it('throws when activation base URL is missing for a program', () => {
+    const deltaAdapter = new GenericProgramAdapter('delta-skymiles-shopping');
+    expect(() => deltaAdapter.buildActivationUrl('nike.com', 'https://www.nike.com/')).toThrow(
+      'Missing activation base URL for program'
+    );
+  });
 });

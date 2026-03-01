@@ -12,6 +12,24 @@ import {
 } from '../types/index';
 import { getAdapter } from './adapters';
 
+
+const KNOWN_MERCHANT_DOMAINS = [
+  'amazon.com',
+  'bestbuy.com',
+  'ebay.com',
+  'etsy.com',
+  'homedepot.com',
+  'lowes.com',
+  'macys.com',
+  'nike.com',
+  'target.com',
+  'walmart.com',
+];
+
+function isKnownMerchantHost(hostname: string): boolean {
+  return KNOWN_MERCHANT_DOMAINS.some((domain) => hostname === domain || hostname.endsWith(`.${domain}`));
+}
+
 /** Gets stored point balances from extension storage */
 export async function getStoredBalances(): Promise<PointsBalance[]> {
   const result = await chrome.storage.local.get(StorageKey.BALANCES);
@@ -77,8 +95,18 @@ export function calculateEstimatedPoints(
 export async function findOpportunities(
   url: string
 ): Promise<ShoppingOpportunity[]> {
+  let merchantHost: string;
+  try {
+    merchantHost = new URL(url).hostname;
+  } catch {
+    return [];
+  }
+
+  if (!isKnownMerchantHost(merchantHost)) {
+    return [];
+  }
+
   const settings = await getSettings();
-  const merchantHost = new URL(url).hostname;
   const enabledPrograms = settings.enabledPrograms.length > 0
     ? KNOWN_PROGRAMS.filter((program) => settings.enabledPrograms.includes(program.id))
     : KNOWN_PROGRAMS;
@@ -104,19 +132,41 @@ export async function findOpportunities(
 }
 
 export async function buildActivationUrl(programId: string, merchantUrl: string): Promise<ActivationUrlResultMessage> {
-  const storeKey = new URL(merchantUrl).hostname.replace(/^www\./, '');
-  const adapter = getAdapter(programId);
-  const activationUrl = await adapter.buildActivationUrl(storeKey, merchantUrl);
-  const attributionRisk = adapter.detectAttributionRisk
-    ? await adapter.detectAttributionRisk(merchantUrl)
-    : 'none';
+  let storeKey: string;
+  try {
+    storeKey = new URL(merchantUrl).hostname.replace(/^www\./, '');
+  } catch {
+    return {
+      type: MessageType.ACTIVATION_URL_RESULT,
+      programId,
+      activationUrl: '',
+      attributionRisk: 'none',
+      error: 'Invalid merchant URL',
+    };
+  }
 
-  return {
-    type: MessageType.ACTIVATION_URL_RESULT,
-    programId,
-    activationUrl,
-    attributionRisk,
-  };
+  try {
+    const adapter = getAdapter(programId);
+    const activationUrl = await adapter.buildActivationUrl(storeKey, merchantUrl);
+    const attributionRisk = adapter.detectAttributionRisk
+      ? await adapter.detectAttributionRisk(merchantUrl)
+      : 'none';
+
+    return {
+      type: MessageType.ACTIVATION_URL_RESULT,
+      programId,
+      activationUrl,
+      attributionRisk,
+    };
+  } catch (error) {
+    return {
+      type: MessageType.ACTIVATION_URL_RESULT,
+      programId,
+      activationUrl: '',
+      attributionRisk: 'none',
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
 
 /** Handles incoming messages from other extension components */
@@ -134,7 +184,13 @@ export function handleMessage(
             opportunities,
           });
         })
-        .catch(console.error);
+        .catch((error) => {
+          console.error(error);
+          sendResponse({
+            type: MessageType.OPPORTUNITIES_RESULT,
+            opportunities: [],
+          });
+        });
       return true;
 
     case MessageType.BUILD_ACTIVATION_URL:
@@ -142,7 +198,16 @@ export function handleMessage(
         .then((result) => {
           sendResponse(result);
         })
-        .catch(console.error);
+        .catch((error) => {
+          console.error(error);
+          sendResponse({
+            type: MessageType.ACTIVATION_URL_RESULT,
+            programId: message.programId,
+            activationUrl: '',
+            attributionRisk: 'none',
+            error: error instanceof Error ? error.message : String(error),
+          });
+        });
       return true;
 
     case MessageType.GET_BALANCES:
@@ -153,7 +218,13 @@ export function handleMessage(
             balances,
           });
         })
-        .catch(console.error);
+        .catch((error) => {
+          console.error(error);
+          sendResponse({
+            type: MessageType.BALANCES_RESULT,
+            balances: [],
+          });
+        });
       return true;
 
     case MessageType.UPDATE_BALANCE:
@@ -164,7 +235,13 @@ export function handleMessage(
             balances: [],
           });
         })
-        .catch(console.error);
+        .catch((error) => {
+          console.error(error);
+          sendResponse({
+            type: MessageType.BALANCES_RESULT,
+            balances: [],
+          });
+        });
       return true;
 
     case MessageType.CONTENT_LOADED:
@@ -180,11 +257,14 @@ export function handleMessage(
 export function handleInstalled(
   details: chrome.runtime.InstalledDetails
 ): void {
-  if (details.reason === chrome.runtime.OnInstalledReason.INSTALL) {
+  const installReason = chrome.runtime.OnInstalledReason?.INSTALL ?? 'install';
+  const updateReason = chrome.runtime.OnInstalledReason?.UPDATE ?? 'update';
+
+  if (details.reason === installReason) {
     console.log('Points Plugin installed');
     void chrome.storage.sync.set({ [StorageKey.SETTINGS]: DEFAULT_SETTINGS });
     void chrome.runtime.openOptionsPage();
-  } else if (details.reason === chrome.runtime.OnInstalledReason.UPDATE) {
+  } else if (details.reason === updateReason) {
     console.log(`Points Plugin updated from version ${details.previousVersion ?? 'unknown'}`);
   }
 }

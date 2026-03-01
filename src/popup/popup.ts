@@ -34,6 +34,10 @@ async function activateProgram(opportunity: ShoppingOpportunity): Promise<void> 
     merchantUrl: opportunity.url,
   } as BuildActivationUrlMessage)) as ActivationUrlResultMessage;
 
+  if (result.error) {
+    throw new Error(result.error);
+  }
+
   if (result.attributionRisk === 'possible_affiliate_tag') {
     const proceed = window.confirm(
       'Existing affiliate parameters were detected in the URL. Continue with explicit activation?'
@@ -63,7 +67,7 @@ function addProgramActions(card: HTMLElement, opportunity: ShoppingOpportunity):
     signupLink.href = program.signupUrl;
     signupLink.textContent = 'Sign up';
     signupLink.target = '_blank';
-    signupLink.rel = 'noreferrer';
+    signupLink.rel = 'noopener noreferrer';
     actions.appendChild(signupLink);
   }
 
@@ -72,8 +76,13 @@ function addProgramActions(card: HTMLElement, opportunity: ShoppingOpportunity):
     loginLink.href = program.loginUrl;
     loginLink.textContent = 'Login';
     loginLink.target = '_blank';
-    loginLink.rel = 'noreferrer';
+    loginLink.rel = 'noopener noreferrer';
     actions.appendChild(loginLink);
+  }
+
+  if (!program?.signupUrl && !program?.loginUrl) {
+    activateButton.disabled = true;
+    activateButton.title = 'Activation is unavailable for this program right now.';
   }
 
   actions.appendChild(activateButton);
@@ -108,7 +117,7 @@ export function renderOpportunities(
     card.appendChild(retailer);
     card.appendChild(points);
 
-    if (opp.estimatedValueCents) {
+    if (opp.estimatedValueCents != null) {
       const value = document.createElement('div');
       value.className = 'points';
       value.textContent = `Estimated value: $${(opp.estimatedValueCents / 100).toFixed(2)}`;

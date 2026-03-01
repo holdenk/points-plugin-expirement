@@ -101,6 +101,7 @@ export interface ActivationUrlResultMessage extends BaseMessage {
   programId: string;
   activationUrl: string;
   attributionRisk: 'none' | 'possible_affiliate_tag';
+  error?: string;
 }
 
 export interface GetBalancesMessage extends BaseMessage {

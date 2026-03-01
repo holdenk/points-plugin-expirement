@@ -1,5 +1,6 @@
 import {
   AlternateEarningMethod,
+  DEFAULT_SETTINGS,
   KNOWN_PROGRAMS,
   ProgramAdapter,
   Settings,
@@ -11,10 +12,11 @@ function getProgramById(programId: string): (typeof KNOWN_PROGRAMS)[number] | un
 }
 
 function buildGenericActivationUrl(baseUrl: string | undefined, merchantUrl: string): string {
-  const fallback = 'https://example.com/activate';
-  const target = baseUrl ?? fallback;
-  const separator = target.includes('?') ? '&' : '?';
-  return `${target}${separator}target=${encodeURIComponent(merchantUrl)}`;
+  if (!baseUrl) {
+    throw new Error('Missing activation base URL for program');
+  }
+  const separator = baseUrl.includes('?') ? '&' : '?';
+  return `${baseUrl}${separator}target=${encodeURIComponent(merchantUrl)}`;
 }
 
 export class GenericProgramAdapter implements ProgramAdapter {
@@ -35,8 +37,17 @@ export class GenericProgramAdapter implements ProgramAdapter {
 
   async isEnabled(): Promise<boolean> {
     const result = await chrome.storage.sync.get(StorageKey.SETTINGS);
-    const settings = (result[StorageKey.SETTINGS] as Settings | undefined) ?? null;
-    if (!settings || settings.enabledPrograms.length === 0) {
+    const stored = (result[StorageKey.SETTINGS] as Partial<Settings> | undefined) ?? undefined;
+    const settings: Settings = {
+      ...DEFAULT_SETTINGS,
+      ...stored,
+      pointValuationsCents: {
+        ...DEFAULT_SETTINGS.pointValuationsCents,
+        ...stored?.pointValuationsCents,
+      },
+    };
+
+    if (settings.enabledPrograms.length === 0) {
       return true;
     }
     return settings.enabledPrograms.includes(this.id);

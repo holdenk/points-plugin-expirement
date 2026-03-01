@@ -63,6 +63,44 @@ describe('renderOpportunities', () => {
     expect(signupLink?.href).toBe('https://shopping.mileageplus.com/');
     expect(signupLink?.target).toBe('_blank');
   });
+
+
+  it('renders zero estimated value and secure links', () => {
+    const opportunities = [
+      {
+        url: 'https://www.nike.com',
+        retailerName: 'United MileagePlus Shopping',
+        estimatedPoints: 0,
+        estimatedValueCents: 0,
+        programId: 'united-shopping',
+      },
+    ];
+
+    renderOpportunities(opportunities, container);
+
+    expect(container.textContent).toContain('Estimated value: $0.00');
+    const links = Array.from(container.querySelectorAll('.card-actions a')) as HTMLAnchorElement[];
+    links.forEach((link) => {
+      expect(link.rel).toBe('noopener noreferrer');
+    });
+  });
+
+  it('disables activate when program has no activation base URL', () => {
+    const opportunities = [
+      {
+        url: 'https://www.nike.com',
+        retailerName: 'Delta SkyMiles Shopping',
+        estimatedPoints: 100,
+        estimatedValueCents: 120,
+        programId: 'delta-skymiles-shopping',
+      },
+    ];
+
+    renderOpportunities(opportunities, container);
+
+    const activateButton = container.querySelector('.activate-btn') as HTMLButtonElement;
+    expect(activateButton.disabled).toBe(true);
+  });
 });
 
 describe('renderBalances', () => {

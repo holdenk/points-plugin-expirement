@@ -5,7 +5,7 @@ export enum CurrencyType {
   CASHBACK = 'cashback',
 }
 
-export type ProgramType = 'airline' | 'cashback' | 'receipt_app' | 'coupon';
+export type ProgramType = 'airline' | 'cashback' | 'coupon';
 
 /** Represents a points program at a retailer */
 export interface PointsProgram {
@@ -26,11 +26,6 @@ export interface OfferSnapshot {
   fetchedAt: number;
 }
 
-export interface AlternateEarningMethod {
-  type: 'receipt_scanning' | 'card_linked' | 'in_store';
-  description: string;
-  actionUrl?: string;
-}
 
 /**
  * Interface for program-specific activation and offer logic.
@@ -43,8 +38,8 @@ export interface ProgramAdapter {
   isEnabled(): Promise<boolean>;
   buildActivationUrl(storeKey: string, merchantUrl: string): Promise<string>;
   refreshOffer?(storeKey: string): Promise<OfferSnapshot | null>;
+  refreshMerchantDomains?(): Promise<string[] | null>;
   detectAttributionRisk?(merchantUrl: string): Promise<'none' | 'possible_affiliate_tag'>;
-  getAlternateEarningMethods?(): Promise<AlternateEarningMethod[]>;
 }
 
 /** Represents the user's balance in a points program */
@@ -162,7 +157,6 @@ export const DEFAULT_SETTINGS: Settings = {
     rakuten: 1,
     'capital-one-shopping': 1,
     'mr-rebates': 1,
-    fetch: 0.8,
   },
 };
 
@@ -250,15 +244,5 @@ export const KNOWN_PROGRAMS: PointsProgram[] = [
     type: 'cashback',
     signupUrl: 'https://www.mrrebates.com/',
     loginUrl: 'https://www.mrrebates.com/',
-  },
-  {
-    id: 'fetch',
-    name: 'Fetch',
-    retailerDomain: 'fetch.com',
-    pointsPerDollar: 1,
-    currency: CurrencyType.POINTS,
-    type: 'receipt_app',
-    signupUrl: 'https://fetch.com/app',
-    loginUrl: 'https://fetch.com/',
   },
 ];

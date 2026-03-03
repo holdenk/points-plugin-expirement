@@ -12,24 +12,6 @@ import {
 } from '../types/index';
 import { getAdapter } from './adapters';
 
-
-const KNOWN_MERCHANT_DOMAINS = [
-  'amazon.com',
-  'bestbuy.com',
-  'ebay.com',
-  'etsy.com',
-  'homedepot.com',
-  'lowes.com',
-  'macys.com',
-  'nike.com',
-  'target.com',
-  'walmart.com',
-];
-
-function isKnownMerchantHost(hostname: string): boolean {
-  return KNOWN_MERCHANT_DOMAINS.some((domain) => hostname === domain || hostname.endsWith(`.${domain}`));
-}
-
 /** Gets stored point balances from extension storage */
 export async function getStoredBalances(): Promise<PointsBalance[]> {
   const result = await chrome.storage.local.get(StorageKey.BALANCES);
@@ -83,26 +65,71 @@ export function findProgramForUrl(
 /** Calculates estimated points for a shopping opportunity */
 export function calculateEstimatedPoints(
   program: PointsProgram,
-  estimatedSpend: number = 50
+  estimatedSpend: number = 50,
+  pointsPerDollarOverride?: number
 ): number {
-  return Math.floor(program.pointsPerDollar * estimatedSpend);
+  const effectiveRate = pointsPerDollarOverride ?? program.pointsPerDollar;
+  return Math.floor(effectiveRate * estimatedSpend);
+}
+
+function normalizeHostname(hostname: string): string {
+  return hostname.replace(/^www\./, '').toLowerCase();
+}
+
+function hasActiveTracking(merchantUrl: string): boolean {
+  try {
+    const url = new URL(merchantUrl);
+    return ['tag', 'affiliate', 'ref', 'utm_source'].some((key) => url.searchParams.has(key));
+  } catch {
+    return false;
+  }
+}
+
+async function buildOpportunityForProgram(
+  program: PointsProgram,
+  merchantHost: string,
+  sourceUrl: string,
+  settings: Settings
+): Promise<ShoppingOpportunity | null> {
+  const adapter = getAdapter(program.id);
+  const domains = await adapter.refreshMerchantDomains?.();
+  const normalizedDomains = (domains ?? []).map(normalizeHostname);
+
+  if (normalizedDomains.length > 0 && !normalizedDomains.includes(merchantHost)) {
+    return null;
+  }
+
+  const refreshedOffer = await adapter.refreshOffer?.(merchantHost);
+  const estimatedPoints = calculateEstimatedPoints(program, 50, refreshedOffer?.pointsPerDollar);
+  if (estimatedPoints < settings.minimumPointsThreshold) {
+    return null;
+  }
+
+  const valuation = settings.pointValuationsCents[program.id] ?? 1;
+  return {
+    url: sourceUrl,
+    retailerName: program.name,
+    estimatedPoints,
+    estimatedValueCents: Math.round(estimatedPoints * valuation),
+    programId: program.id,
+  };
 }
 
 /**
  * Finds shopping opportunities for a merchant URL.
- * This is intentionally catalog-first and does not scrape merchant pages.
+ * Uses non-blocking, per-program refreshes so one failing backend doesn't block other programs.
  */
 export async function findOpportunities(
   url: string
 ): Promise<ShoppingOpportunity[]> {
   let merchantHost: string;
   try {
-    merchantHost = new URL(url).hostname;
+    merchantHost = normalizeHostname(new URL(url).hostname);
   } catch {
     return [];
   }
 
-  if (!isKnownMerchantHost(merchantHost)) {
+  if (hasActiveTracking(url)) {
     return [];
   }
 
@@ -111,21 +138,14 @@ export async function findOpportunities(
     ? KNOWN_PROGRAMS.filter((program) => settings.enabledPrograms.includes(program.id))
     : KNOWN_PROGRAMS;
 
-  const opportunities = enabledPrograms
-    .filter((program) => !merchantHost.includes(program.retailerDomain))
-    .map((program) => {
-      const estimatedPoints = calculateEstimatedPoints(program);
-      const valuation = settings.pointValuationsCents[program.id] ?? 1;
+  const settled = await Promise.allSettled(
+    enabledPrograms.map((program) => buildOpportunityForProgram(program, merchantHost, url, settings))
+  );
 
-      return {
-        url,
-        retailerName: program.name,
-        estimatedPoints,
-        estimatedValueCents: Math.round(estimatedPoints * valuation),
-        programId: program.id,
-      };
-    })
-    .filter((opportunity) => opportunity.estimatedPoints >= settings.minimumPointsThreshold)
+  const opportunities = settled
+    .filter((result): result is PromiseFulfilledResult<ShoppingOpportunity | null> => result.status === 'fulfilled')
+    .map((result) => result.value)
+    .filter((opportunity): opportunity is ShoppingOpportunity => opportunity != null)
     .sort((a, b) => (b.estimatedValueCents ?? 0) - (a.estimatedValueCents ?? 0));
 
   return opportunities.slice(0, 5);
@@ -134,7 +154,7 @@ export async function findOpportunities(
 export async function buildActivationUrl(programId: string, merchantUrl: string): Promise<ActivationUrlResultMessage> {
   let storeKey: string;
   try {
-    storeKey = new URL(merchantUrl).hostname.replace(/^www\./, '');
+    storeKey = normalizeHostname(new URL(merchantUrl).hostname);
   } catch {
     return {
       type: MessageType.ACTIVATION_URL_RESULT,

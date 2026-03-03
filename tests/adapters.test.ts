@@ -1,37 +1,16 @@
-import { FetchAdapter, GenericProgramAdapter, getAdapter } from '../src/background/adapters';
+import { GenericProgramAdapter, getAdapter } from '../src/background/adapters';
 
-describe('adapter class hierarchy', () => {
-  it('returns FetchAdapter for fetch and GenericProgramAdapter for miles programs', () => {
-    const fetchAdapter = getAdapter('fetch');
+describe('adapters', () => {
+  it('returns GenericProgramAdapter for known programs', () => {
     const unitedAdapter = getAdapter('united-shopping');
-
-    expect(fetchAdapter).toBeInstanceOf(FetchAdapter);
-    expect(fetchAdapter).toBeInstanceOf(GenericProgramAdapter);
     expect(unitedAdapter).toBeInstanceOf(GenericProgramAdapter);
-    expect(unitedAdapter).not.toBeInstanceOf(FetchAdapter);
   });
 
-  it('preserves program metadata through inheritance', () => {
+  it('preserves program metadata', () => {
     const unitedAdapter = new GenericProgramAdapter('united-shopping');
-    const fetchAdapter = new FetchAdapter();
-
     expect(unitedAdapter.id).toBe('united-shopping');
     expect(unitedAdapter.displayName).toBe('United MileagePlus Shopping');
     expect(unitedAdapter.programType).toBe('airline');
-
-    expect(fetchAdapter.id).toBe('fetch');
-    expect(fetchAdapter.programType).toBe('receipt_app');
-  });
-
-  it('provides alternate earning methods only for Fetch adapter', async () => {
-    const fetchAdapter = new FetchAdapter();
-    const methods = await fetchAdapter.getAlternateEarningMethods();
-
-    expect(methods).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ type: 'receipt_scanning', actionUrl: 'https://fetch.com/app' }),
-      ])
-    );
   });
 
   it('handles partial settings storage in isEnabled without throwing', async () => {
@@ -48,5 +27,18 @@ describe('adapter class hierarchy', () => {
     expect(() => deltaAdapter.buildActivationUrl('nike.com', 'https://www.nike.com/')).toThrow(
       'Missing activation base URL for program'
     );
+  });
+
+  it('falls back to static merchant domains when remote refresh fails', async () => {
+    const originalFetch = global.fetch;
+    global.fetch = jest.fn(async () => {
+      throw new Error('backend down');
+    }) as unknown as typeof fetch;
+
+    const unitedAdapter = new GenericProgramAdapter('united-shopping');
+    const domains = await unitedAdapter.refreshMerchantDomains();
+    expect(domains).toContain('nike.com');
+
+    global.fetch = originalFetch;
   });
 });

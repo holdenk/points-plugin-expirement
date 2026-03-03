@@ -35,7 +35,8 @@ async function activateProgram(opportunity: ShoppingOpportunity): Promise<void> 
   } as BuildActivationUrlMessage)) as ActivationUrlResultMessage;
 
   if (result.error) {
-    throw new Error(result.error);
+    console.error(result.error);
+    return;
   }
 
   if (result.attributionRisk === 'possible_affiliate_tag') {

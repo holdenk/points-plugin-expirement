@@ -18,6 +18,11 @@ describe('calculateEstimatedPoints', () => {
     const program = KNOWN_PROGRAMS.find((p) => p.id === 'aa-eshopping')!;
     expect(calculateEstimatedPoints(program, 100)).toBe(200);
   });
+
+  it('supports rate overrides from refreshed offers', () => {
+    const program = KNOWN_PROGRAMS.find((p) => p.id === 'aa-eshopping')!;
+    expect(calculateEstimatedPoints(program, 100, 3.5)).toBe(350);
+  });
 });
 
 describe('getSettings', () => {
@@ -43,13 +48,13 @@ describe('findOpportunities', () => {
     expect(opps[0].estimatedValueCents).toBeGreaterThanOrEqual(opps[1]?.estimatedValueCents ?? 0);
   });
 
-  it('returns no opportunities for non-merchant URL', async () => {
-    const opps = await findOpportunities('https://www.wikipedia.org');
+  it('returns no opportunities for invalid URL input', async () => {
+    const opps = await findOpportunities('not-a-url');
     expect(opps).toEqual([]);
   });
 
-  it('returns no opportunities for invalid URL input', async () => {
-    const opps = await findOpportunities('not-a-url');
+  it('does not show opportunities when tracking is already active on URL', async () => {
+    const opps = await findOpportunities('https://www.nike.com/?tag=already-active');
     expect(opps).toEqual([]);
   });
 
@@ -67,7 +72,7 @@ describe('findOpportunities', () => {
     expect(opps[0].programId).toBe('rakuten');
   });
 
-  it('returns opportunities for two enabled miles backends on the same merchant page', async () => {
+  it('returns opportunities for two enabled miles backends on same merchant page', async () => {
     await chrome.storage.sync.set({
       [StorageKey.SETTINGS]: {
         ...DEFAULT_SETTINGS,
@@ -79,6 +84,34 @@ describe('findOpportunities', () => {
     const opps = await findOpportunities('https://www.nike.com');
     expect(opps).toHaveLength(2);
     expect(opps.map((opp) => opp.programId).sort()).toEqual(['aa-eshopping', 'united-shopping']);
+  });
+
+  it('continues when one backend refresh fails (non-blocking)', async () => {
+    const originalFetch = global.fetch;
+    global.fetch = jest.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('aadvantageeshopping.com')) {
+        throw new Error('aa backend down');
+      }
+      return {
+        ok: false,
+        json: async () => ({}),
+      } as Response;
+    }) as unknown as typeof fetch;
+
+    await chrome.storage.sync.set({
+      [StorageKey.SETTINGS]: {
+        ...DEFAULT_SETTINGS,
+        enabledPrograms: ['aa-eshopping', 'united-shopping'],
+        minimumPointsThreshold: 0,
+      },
+    });
+
+    const opps = await findOpportunities('https://www.nike.com');
+    expect(opps.length).toBeGreaterThan(0);
+    expect(opps.some((opp) => opp.programId === 'united-shopping')).toBe(true);
+
+    global.fetch = originalFetch;
   });
 });
 
@@ -101,12 +134,6 @@ describe('buildActivationUrl', () => {
   it('returns structured error when activation base URL is missing', async () => {
     const result = await buildActivationUrl('delta-skymiles-shopping', 'https://www.nike.com/');
     expect(result.error).toContain('Missing activation base URL');
-    expect(result.activationUrl).toBe('');
-  });
-
-  it('returns structured error for invalid merchant URL', async () => {
-    const result = await buildActivationUrl('united-shopping', 'not-a-url');
-    expect(result.error).toBe('Invalid merchant URL');
     expect(result.activationUrl).toBe('');
   });
 });

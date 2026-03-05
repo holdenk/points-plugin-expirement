@@ -5,6 +5,7 @@ import {
   getSettings,
   handleInstalled,
   handleMessage,
+  __resetOpportunityCacheForTests,
 } from '../src/background/background';
 import {
   MessageType,
@@ -13,6 +14,10 @@ import {
   KNOWN_PROGRAMS,
 } from '../src/types/index';
 
+
+beforeEach(() => {
+  __resetOpportunityCacheForTests();
+});
 describe('calculateEstimatedPoints', () => {
   it('calculates points correctly', () => {
     const program = KNOWN_PROGRAMS.find((p) => p.id === 'aa-eshopping')!;
@@ -86,6 +91,80 @@ describe('findOpportunities', () => {
     expect(opps.map((opp) => opp.programId).sort()).toEqual(['aa-eshopping', 'united-shopping']);
   });
 
+
+  it('uses cached domains/offers on subsequent requests within TTL', async () => {
+    const originalFetch = global.fetch;
+    global.fetch = jest.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/api/extension/merchant-domains')) {
+        return {
+          ok: true,
+          json: async () => ({ domains: ['nike.com'] }),
+        } as Response;
+      }
+
+      if (url.includes('/api/extension/offers')) {
+        return {
+          ok: true,
+          json: async () => ({ pointsPerDollar: 4 }),
+        } as Response;
+      }
+
+      return { ok: false, json: async () => ({}) } as Response;
+    }) as unknown as typeof fetch;
+
+    await chrome.storage.sync.set({
+      [StorageKey.SETTINGS]: {
+        ...DEFAULT_SETTINGS,
+        enabledPrograms: ['united-shopping'],
+        minimumPointsThreshold: 0,
+      },
+    });
+
+    await findOpportunities('https://www.nike.com');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await findOpportunities('https://www.nike.com');
+
+    expect((global.fetch as jest.Mock).mock.calls.length).toBe(2);
+    global.fetch = originalFetch;
+  });
+
+  it('refreshes stale cache entries opportunistically', async () => {
+    const old = Date.now() - (2 * 24 * 60 * 60 * 1000);
+    await chrome.storage.local.set({
+      [StorageKey.OPPORTUNITY_CACHE]: {
+        merchantDomainsByProgram: {
+          'united-shopping': { domains: ['nike.com'], fetchedAt: old },
+        },
+        offersByProgramAndStore: {
+          'united-shopping': {
+            'nike.com': { pointsPerDollar: 2, fetchedAt: old },
+          },
+        },
+      },
+    });
+
+    const originalFetch = global.fetch;
+    global.fetch = jest.fn(async () => ({
+      ok: true,
+      json: async () => ({ domains: ['nike.com'], pointsPerDollar: 3 }),
+    }) as Response) as unknown as typeof fetch;
+
+    await chrome.storage.sync.set({
+      [StorageKey.SETTINGS]: {
+        ...DEFAULT_SETTINGS,
+        enabledPrograms: ['united-shopping'],
+        minimumPointsThreshold: 0,
+      },
+    });
+
+    const opps = await findOpportunities('https://www.nike.com');
+    expect(opps).toHaveLength(1);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect((global.fetch as jest.Mock).mock.calls.length).toBeGreaterThanOrEqual(1);
+
+    global.fetch = originalFetch;
+  });
   it('continues when one backend refresh fails (non-blocking)', async () => {
     const originalFetch = global.fetch;
     global.fetch = jest.fn(async (input: RequestInfo | URL) => {

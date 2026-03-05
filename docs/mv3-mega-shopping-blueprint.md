@@ -29,7 +29,7 @@ The codebase now exposes a shared adapter interface in `src/types/index.ts`:
 - Optional attribution-risk detection.
 
 ## Implementation notes from observing existing shopping extensions
-- Most portal extensions appear to preload a merchant/domain index and then query offer/rate APIs per active tab.
+- Most portal extensions appear to preload a merchant/domain index and then query offer/rate APIs per active tab. This implementation caches domain/rate results with a 24h TTL and refreshes opportunistically.
 - UI notifications are generally suppressed once affiliate/tracking parameters are already present in the current URL.
 - A degraded backend for one program should not block the rest of the UI; this project follows the same pattern with `Promise.allSettled`.
 

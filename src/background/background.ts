@@ -2,6 +2,7 @@ import {
   ActivationUrlResultMessage,
   ExtensionMessage,
   MessageType,
+  OfferSnapshot,
   PointsBalance,
   PointsProgram,
   Settings,
@@ -11,6 +12,180 @@ import {
   KNOWN_PROGRAMS,
 } from '../types/index';
 import { getAdapter } from './adapters';
+
+const OPPORTUNITY_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
+interface CachedDomainsEntry {
+  domains: string[];
+  fetchedAt: number;
+}
+
+interface CachedOfferEntry {
+  pointsPerDollar: number;
+  fetchedAt: number;
+}
+
+interface OpportunityCache {
+  merchantDomainsByProgram: Record<string, CachedDomainsEntry>;
+  offersByProgramAndStore: Record<string, Record<string, CachedOfferEntry>>;
+}
+
+let inMemoryOpportunityCache: OpportunityCache | null = null;
+const inFlightDomainRefresh = new Map<string, Promise<void>>();
+const inFlightOfferRefresh = new Map<string, Promise<void>>();
+
+function normalizeHostname(hostname: string): string {
+  return hostname.replace(/^www\./, '').toLowerCase();
+}
+
+function hasActiveTracking(merchantUrl: string): boolean {
+  try {
+    const url = new URL(merchantUrl);
+    return ['tag', 'affiliate', 'ref', 'utm_source'].some((key) => url.searchParams.has(key));
+  } catch {
+    return false;
+  }
+}
+
+function isFresh(timestamp: number): boolean {
+  return Date.now() - timestamp <= OPPORTUNITY_CACHE_TTL_MS;
+}
+
+function cloneOpportunityCache(cache: OpportunityCache): OpportunityCache {
+  return {
+    merchantDomainsByProgram: { ...cache.merchantDomainsByProgram },
+    offersByProgramAndStore: Object.fromEntries(
+      Object.entries(cache.offersByProgramAndStore).map(([programId, storeMap]) => [
+        programId,
+        { ...storeMap },
+      ])
+    ),
+  };
+}
+
+async function getOpportunityCache(): Promise<OpportunityCache> {
+  if (inMemoryOpportunityCache) {
+    return inMemoryOpportunityCache;
+  }
+
+  const result = await chrome.storage.local.get(StorageKey.OPPORTUNITY_CACHE);
+  const stored = result[StorageKey.OPPORTUNITY_CACHE] as Partial<OpportunityCache> | undefined;
+
+  inMemoryOpportunityCache = {
+    merchantDomainsByProgram: stored?.merchantDomainsByProgram ?? {},
+    offersByProgramAndStore: stored?.offersByProgramAndStore ?? {},
+  };
+
+  return inMemoryOpportunityCache;
+}
+
+async function persistOpportunityCache(cache: OpportunityCache): Promise<void> {
+  inMemoryOpportunityCache = cloneOpportunityCache(cache);
+  await chrome.storage.local.set({ [StorageKey.OPPORTUNITY_CACHE]: inMemoryOpportunityCache });
+}
+
+async function refreshProgramDomains(programId: string): Promise<void> {
+  if (inFlightDomainRefresh.has(programId)) {
+    return inFlightDomainRefresh.get(programId)!;
+  }
+
+  const refreshPromise = (async (): Promise<void> => {
+    const adapter = getAdapter(programId);
+    const refreshedDomains = await adapter.refreshMerchantDomains?.();
+    if (!refreshedDomains || refreshedDomains.length === 0) {
+      return;
+    }
+
+    const cache = await getOpportunityCache();
+    cache.merchantDomainsByProgram[programId] = {
+      domains: refreshedDomains.map(normalizeHostname),
+      fetchedAt: Date.now(),
+    };
+    await persistOpportunityCache(cache);
+  })()
+    .catch((error) => {
+      console.error(error);
+    })
+    .finally(() => {
+      inFlightDomainRefresh.delete(programId);
+    });
+
+  inFlightDomainRefresh.set(programId, refreshPromise);
+  return refreshPromise;
+}
+
+async function refreshProgramOffer(programId: string, storeKey: string): Promise<void> {
+  const refreshKey = `${programId}:${storeKey}`;
+  if (inFlightOfferRefresh.has(refreshKey)) {
+    return inFlightOfferRefresh.get(refreshKey)!;
+  }
+
+  const refreshPromise = (async (): Promise<void> => {
+    const adapter = getAdapter(programId);
+    const refreshedOffer = await adapter.refreshOffer?.(storeKey);
+    if (!refreshedOffer) {
+      return;
+    }
+
+    const cache = await getOpportunityCache();
+    const programOffers = cache.offersByProgramAndStore[programId] ?? {};
+    programOffers[storeKey] = {
+      pointsPerDollar: refreshedOffer.pointsPerDollar,
+      fetchedAt: refreshedOffer.fetchedAt,
+    };
+    cache.offersByProgramAndStore[programId] = programOffers;
+    await persistOpportunityCache(cache);
+  })()
+    .catch((error) => {
+      console.error(error);
+    })
+    .finally(() => {
+      inFlightOfferRefresh.delete(refreshKey);
+    });
+
+  inFlightOfferRefresh.set(refreshKey, refreshPromise);
+  return refreshPromise;
+}
+
+async function getCachedDomainsForProgram(programId: string): Promise<string[] | null> {
+  const cache = await getOpportunityCache();
+  const cached = cache.merchantDomainsByProgram[programId];
+
+  if (!cached) {
+    void refreshProgramDomains(programId);
+    return null;
+  }
+
+  if (!isFresh(cached.fetchedAt)) {
+    void refreshProgramDomains(programId);
+  }
+
+  return cached.domains;
+}
+
+async function getCachedOfferForProgram(
+  program: PointsProgram,
+  storeKey: string
+): Promise<OfferSnapshot | null> {
+  const cache = await getOpportunityCache();
+  const cached = cache.offersByProgramAndStore[program.id]?.[storeKey];
+
+  if (!cached) {
+    void refreshProgramOffer(program.id, storeKey);
+    return null;
+  }
+
+  if (!isFresh(cached.fetchedAt)) {
+    void refreshProgramOffer(program.id, storeKey);
+  }
+
+  return {
+    storeKey,
+    pointsPerDollar: cached.pointsPerDollar,
+    currency: program.currency,
+    fetchedAt: cached.fetchedAt,
+  };
+}
 
 /** Gets stored point balances from extension storage */
 export async function getStoredBalances(): Promise<PointsBalance[]> {
@@ -72,35 +247,19 @@ export function calculateEstimatedPoints(
   return Math.floor(effectiveRate * estimatedSpend);
 }
 
-function normalizeHostname(hostname: string): string {
-  return hostname.replace(/^www\./, '').toLowerCase();
-}
-
-function hasActiveTracking(merchantUrl: string): boolean {
-  try {
-    const url = new URL(merchantUrl);
-    return ['tag', 'affiliate', 'ref', 'utm_source'].some((key) => url.searchParams.has(key));
-  } catch {
-    return false;
-  }
-}
-
 async function buildOpportunityForProgram(
   program: PointsProgram,
   merchantHost: string,
   sourceUrl: string,
   settings: Settings
 ): Promise<ShoppingOpportunity | null> {
-  const adapter = getAdapter(program.id);
-  const domains = await adapter.refreshMerchantDomains?.();
-  const normalizedDomains = (domains ?? []).map(normalizeHostname);
-
-  if (normalizedDomains.length > 0 && !normalizedDomains.includes(merchantHost)) {
+  const cachedDomains = await getCachedDomainsForProgram(program.id);
+  if (cachedDomains && cachedDomains.length > 0 && !cachedDomains.includes(merchantHost)) {
     return null;
   }
 
-  const refreshedOffer = await adapter.refreshOffer?.(merchantHost);
-  const estimatedPoints = calculateEstimatedPoints(program, 50, refreshedOffer?.pointsPerDollar);
+  const cachedOffer = await getCachedOfferForProgram(program, merchantHost);
+  const estimatedPoints = calculateEstimatedPoints(program, 50, cachedOffer?.pointsPerDollar);
   if (estimatedPoints < settings.minimumPointsThreshold) {
     return null;
   }
@@ -117,7 +276,7 @@ async function buildOpportunityForProgram(
 
 /**
  * Finds shopping opportunities for a merchant URL.
- * Uses non-blocking, per-program refreshes so one failing backend doesn't block other programs.
+ * Uses cache-first lookups and opportunistic refreshes so popup responses stay fast.
  */
 export async function findOpportunities(
   url: string
@@ -177,7 +336,7 @@ export async function buildActivationUrl(programId: string, merchantUrl: string)
       programId,
       activationUrl,
       attributionRisk,
-    };
+    }; 
   } catch (error) {
     return {
       type: MessageType.ACTIVATION_URL_RESULT,
@@ -287,6 +446,12 @@ export function handleInstalled(
   } else if (details.reason === updateReason) {
     console.log(`Points Plugin updated from version ${details.previousVersion ?? 'unknown'}`);
   }
+}
+
+export function __resetOpportunityCacheForTests(): void {
+  inMemoryOpportunityCache = null;
+  inFlightDomainRefresh.clear();
+  inFlightOfferRefresh.clear();
 }
 
 if (typeof chrome !== 'undefined' && chrome.runtime) {

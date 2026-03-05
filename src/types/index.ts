@@ -132,6 +132,7 @@ export enum StorageKey {
   PROGRAMS = 'programs',
   BALANCES = 'balances',
   SETTINGS = 'settings',
+  OPPORTUNITY_CACHE = 'opportunity_cache',
 }
 
 export interface Settings {

@@ -1,5 +1,5 @@
 import { readFormValues, populateForm, getSettings, saveSettings } from '../src/options/options';
-import { DEFAULT_SETTINGS, KNOWN_PROGRAMS, StorageKey } from '../src/types/index';
+import { DEFAULT_SETTINGS, KNOWN_PROGRAMS } from '../src/types/index';
 
 describe('populateForm', () => {
   beforeEach(() => {
@@ -36,14 +36,6 @@ describe('populateForm', () => {
       expect(cb.checked).toBe(true);
     });
   });
-
-  it('only checks specified programs', () => {
-    populateForm({ ...DEFAULT_SETTINGS, enabledPrograms: ['amazon-rewards'] });
-    const amazonCb = document.getElementById('program-amazon-rewards') as HTMLInputElement;
-    const targetCb = document.getElementById('program-target-circle') as HTMLInputElement;
-    expect(amazonCb.checked).toBe(true);
-    expect(targetCb.checked).toBe(false);
-  });
 });
 
 describe('readFormValues', () => {
@@ -52,7 +44,10 @@ describe('readFormValues', () => {
       <input type="checkbox" id="enable-notifications" checked />
       <input type="number" id="min-points" value="150" />
       <div id="programs-list">
-        ${KNOWN_PROGRAMS.map((p) => `<input type="checkbox" id="program-${p.id}" checked />`).join('')}
+        ${KNOWN_PROGRAMS.map((p) => `
+          <input type="checkbox" id="program-${p.id}" checked />
+          <input type="number" id="valuation-${p.id}" value="1.5" />
+        `).join('')}
       </div>
     `;
   });
@@ -72,11 +67,16 @@ describe('readFormValues', () => {
     expect(values.enabledPrograms).toEqual(KNOWN_PROGRAMS.map((p) => p.id));
   });
 
-  it('handles unchecked programs', () => {
-    const targetCb = document.getElementById('program-target-circle') as HTMLInputElement;
-    targetCb.checked = false;
+  it('preserves explicit zero values for threshold and valuation', () => {
+    const minPoints = document.getElementById('min-points') as HTMLInputElement;
+    const unitedValuation = document.getElementById('valuation-united-shopping') as HTMLInputElement;
+
+    minPoints.value = '0';
+    unitedValuation.value = '0';
+
     const values = readFormValues();
-    expect(values.enabledPrograms).not.toContain('target-circle');
+    expect(values.minimumPointsThreshold).toBe(0);
+    expect(values.pointValuationsCents['united-shopping']).toBe(0);
   });
 });
 

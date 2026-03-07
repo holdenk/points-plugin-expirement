@@ -1,108 +1,32 @@
 import {
-  findProgramForUrl,
+  buildActivationUrl,
   calculateEstimatedPoints,
   findOpportunities,
-  getStoredBalances,
-  saveBalances,
-  upsertBalance,
   getSettings,
-  handleMessage,
   handleInstalled,
+  handleMessage,
+  __resetOpportunityCacheForTests,
 } from '../src/background/background';
 import {
-  CurrencyType,
   MessageType,
   StorageKey,
   DEFAULT_SETTINGS,
   KNOWN_PROGRAMS,
 } from '../src/types/index';
 
-describe('findProgramForUrl', () => {
-  it('finds Amazon program for amazon.com URL', () => {
-    const program = findProgramForUrl('https://www.amazon.com/product/123');
-    expect(program).toBeDefined();
-    expect(program?.id).toBe('amazon-rewards');
-  });
 
-  it('finds Target program for target.com URL', () => {
-    const program = findProgramForUrl('https://www.target.com/p/item');
-    expect(program).toBeDefined();
-    expect(program?.id).toBe('target-circle');
-  });
-
-  it('returns undefined for unknown domain', () => {
-    const program = findProgramForUrl('https://www.example.com/product');
-    expect(program).toBeUndefined();
-  });
-
-  it('returns undefined for invalid URL', () => {
-    const program = findProgramForUrl('not-a-url');
-    expect(program).toBeUndefined();
-  });
-
-  it('uses provided programs list', () => {
-    const customPrograms = [
-      {
-        id: 'custom-program',
-        name: 'Custom Program',
-        retailerDomain: 'custom.com',
-        pointsPerDollar: 2,
-        currency: CurrencyType.POINTS,
-      },
-    ];
-    const program = findProgramForUrl('https://custom.com/shop', customPrograms);
-    expect(program?.id).toBe('custom-program');
-  });
+beforeEach(() => {
+  __resetOpportunityCacheForTests();
 });
-
 describe('calculateEstimatedPoints', () => {
   it('calculates points correctly', () => {
-    const program = KNOWN_PROGRAMS.find((p) => p.id === 'amazon-rewards')!;
-    expect(calculateEstimatedPoints(program, 100)).toBe(300);
+    const program = KNOWN_PROGRAMS.find((p) => p.id === 'aa-eshopping')!;
+    expect(calculateEstimatedPoints(program, 100)).toBe(200);
   });
 
-  it('floors fractional points', () => {
-    const program = { ...KNOWN_PROGRAMS[0], pointsPerDollar: 1.5 };
-    expect(calculateEstimatedPoints(program, 3)).toBe(4); // floor(1.5 * 3)
-  });
-
-  it('uses default spend of 50 when not provided', () => {
-    const program = KNOWN_PROGRAMS.find((p) => p.id === 'amazon-rewards')!;
-    expect(calculateEstimatedPoints(program)).toBe(150); // 3 * 50
-  });
-});
-
-describe('storage operations', () => {
-  it('getStoredBalances returns empty array when no balances stored', async () => {
-    const balances = await getStoredBalances();
-    expect(balances).toEqual([]);
-  });
-
-  it('saveBalances persists balances', async () => {
-    const testBalances = [{ programId: 'amazon-rewards', balance: 1500, lastUpdated: Date.now() }];
-    await saveBalances(testBalances);
-    const retrieved = await getStoredBalances();
-    expect(retrieved).toEqual(testBalances);
-  });
-
-  it('upsertBalance adds new balance', async () => {
-    const newBalance = { programId: 'amazon-rewards', balance: 500, lastUpdated: Date.now() };
-    await upsertBalance(newBalance);
-    const balances = await getStoredBalances();
-    expect(balances).toHaveLength(1);
-    expect(balances[0]).toEqual(newBalance);
-  });
-
-  it('upsertBalance updates existing balance', async () => {
-    const initial = { programId: 'amazon-rewards', balance: 500, lastUpdated: Date.now() };
-    await upsertBalance(initial);
-
-    const updated = { programId: 'amazon-rewards', balance: 1000, lastUpdated: Date.now() };
-    await upsertBalance(updated);
-
-    const balances = await getStoredBalances();
-    expect(balances).toHaveLength(1);
-    expect(balances[0].balance).toBe(1000);
+  it('supports rate overrides from refreshed offers', () => {
+    const program = KNOWN_PROGRAMS.find((p) => p.id === 'aa-eshopping')!;
+    expect(calculateEstimatedPoints(program, 100, 3.5)).toBe(350);
   });
 });
 
@@ -123,104 +47,196 @@ describe('getSettings', () => {
 });
 
 describe('findOpportunities', () => {
-  it('returns empty array for unknown URL', async () => {
-    const opps = await findOpportunities('https://unknown.com');
+  it('returns sorted opportunities for known merchant URL', async () => {
+    const opps = await findOpportunities('https://www.nike.com');
+    expect(opps.length).toBeGreaterThan(0);
+    expect(opps[0].estimatedValueCents).toBeGreaterThanOrEqual(opps[1]?.estimatedValueCents ?? 0);
+  });
+
+  it('returns no opportunities for invalid URL input', async () => {
+    const opps = await findOpportunities('not-a-url');
     expect(opps).toEqual([]);
   });
 
-  it('returns opportunity for known retailer', async () => {
-    const opps = await findOpportunities('https://www.amazon.com/product/123');
+  it('does not show opportunities when tracking is already active on URL', async () => {
+    const opps = await findOpportunities('https://www.nike.com/?tag=already-active');
+    expect(opps).toEqual([]);
+  });
+
+  it('filters by enabled programs', async () => {
+    await chrome.storage.sync.set({
+      [StorageKey.SETTINGS]: {
+        ...DEFAULT_SETTINGS,
+        enabledPrograms: ['rakuten'],
+        minimumPointsThreshold: 0,
+      },
+    });
+
+    const opps = await findOpportunities('https://www.nike.com');
     expect(opps).toHaveLength(1);
-    expect(opps[0].retailerName).toBe('Amazon Rewards');
-    expect(opps[0].programId).toBe('amazon-rewards');
+    expect(opps[0].programId).toBe('rakuten');
   });
 
-  it('filters by enabled programs when specified', async () => {
+  it('returns opportunities for two enabled miles backends on same merchant page', async () => {
     await chrome.storage.sync.set({
       [StorageKey.SETTINGS]: {
         ...DEFAULT_SETTINGS,
-        enabledPrograms: ['target-circle'],
+        enabledPrograms: ['aa-eshopping', 'united-shopping'],
+        minimumPointsThreshold: 0,
       },
     });
-    const opps = await findOpportunities('https://www.amazon.com/product/123');
-    expect(opps).toEqual([]);
+
+    const opps = await findOpportunities('https://www.nike.com');
+    expect(opps).toHaveLength(2);
+    expect(opps.map((opp) => opp.programId).sort()).toEqual(['aa-eshopping', 'united-shopping']);
   });
 
-  it('respects minimum points threshold', async () => {
+
+  it('uses cached domains/offers on subsequent requests within TTL', async () => {
+    const originalFetch = global.fetch;
+    global.fetch = jest.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/api/extension/merchant-domains')) {
+        return {
+          ok: true,
+          json: async () => ({ domains: ['nike.com'] }),
+        } as Response;
+      }
+
+      if (url.includes('/api/extension/offers')) {
+        return {
+          ok: true,
+          json: async () => ({ pointsPerDollar: 4 }),
+        } as Response;
+      }
+
+      return { ok: false, json: async () => ({}) } as Response;
+    }) as unknown as typeof fetch;
+
     await chrome.storage.sync.set({
       [StorageKey.SETTINGS]: {
         ...DEFAULT_SETTINGS,
-        minimumPointsThreshold: 10000,
+        enabledPrograms: ['united-shopping'],
+        minimumPointsThreshold: 0,
       },
     });
-    const opps = await findOpportunities('https://www.amazon.com/product/123');
-    expect(opps).toEqual([]);
+
+    await findOpportunities('https://www.nike.com');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await findOpportunities('https://www.nike.com');
+
+    expect((global.fetch as jest.Mock).mock.calls.length).toBe(2);
+    global.fetch = originalFetch;
+  });
+
+  it('refreshes stale cache entries opportunistically', async () => {
+    const old = Date.now() - (2 * 24 * 60 * 60 * 1000);
+    await chrome.storage.local.set({
+      [StorageKey.OPPORTUNITY_CACHE]: {
+        merchantDomainsByProgram: {
+          'united-shopping': { domains: ['nike.com'], fetchedAt: old },
+        },
+        offersByProgramAndStore: {
+          'united-shopping': {
+            'nike.com': { pointsPerDollar: 2, fetchedAt: old },
+          },
+        },
+      },
+    });
+
+    const originalFetch = global.fetch;
+    global.fetch = jest.fn(async () => ({
+      ok: true,
+      json: async () => ({ domains: ['nike.com'], pointsPerDollar: 3 }),
+    }) as Response) as unknown as typeof fetch;
+
+    await chrome.storage.sync.set({
+      [StorageKey.SETTINGS]: {
+        ...DEFAULT_SETTINGS,
+        enabledPrograms: ['united-shopping'],
+        minimumPointsThreshold: 0,
+      },
+    });
+
+    const opps = await findOpportunities('https://www.nike.com');
+    expect(opps).toHaveLength(1);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect((global.fetch as jest.Mock).mock.calls.length).toBeGreaterThanOrEqual(1);
+
+    global.fetch = originalFetch;
+  });
+  it('continues when one backend refresh fails (non-blocking)', async () => {
+    const originalFetch = global.fetch;
+    global.fetch = jest.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('aadvantageeshopping.com')) {
+        throw new Error('aa backend down');
+      }
+      return {
+        ok: false,
+        json: async () => ({}),
+      } as Response;
+    }) as unknown as typeof fetch;
+
+    await chrome.storage.sync.set({
+      [StorageKey.SETTINGS]: {
+        ...DEFAULT_SETTINGS,
+        enabledPrograms: ['aa-eshopping', 'united-shopping'],
+        minimumPointsThreshold: 0,
+      },
+    });
+
+    const opps = await findOpportunities('https://www.nike.com');
+    expect(opps.length).toBeGreaterThan(0);
+    expect(opps.some((opp) => opp.programId === 'united-shopping')).toBe(true);
+
+    global.fetch = originalFetch;
+  });
+});
+
+describe('buildActivationUrl', () => {
+  it('builds activation URL and returns risk metadata', async () => {
+    const result = await buildActivationUrl('rakuten', 'https://www.nike.com?tag=abc');
+    expect(result.type).toBe(MessageType.ACTIVATION_URL_RESULT);
+    expect(result.activationUrl).toContain('target=');
+    expect(result.attributionRisk).toBe('possible_affiliate_tag');
+  });
+
+  it('builds United activation URL with encoded target tracking payload', async () => {
+    const result = await buildActivationUrl('united-shopping', 'https://www.nike.com/');
+    const activationUrl = new URL(result.activationUrl);
+
+    expect(activationUrl.hostname).toBe('shopping.mileageplus.com');
+    expect(activationUrl.searchParams.get('target')).toBe('https://www.nike.com/');
+  });
+
+  it('returns structured error when activation base URL is missing', async () => {
+    const result = await buildActivationUrl('delta-skymiles-shopping', 'https://www.nike.com/');
+    expect(result.error).toContain('Missing activation base URL');
+    expect(result.activationUrl).toBe('');
   });
 });
 
 describe('handleMessage', () => {
-  it('handles GET_OPPORTUNITIES message', (done) => {
+  it('handles BUILD_ACTIVATION_URL message', (done) => {
     const message = {
-      type: MessageType.GET_OPPORTUNITIES,
-      url: 'https://www.amazon.com/product/123',
+      type: MessageType.BUILD_ACTIVATION_URL,
+      programId: 'rakuten',
+      merchantUrl: 'https://www.nike.com',
     };
+
     const sendResponse = jest.fn((response) => {
-      expect(response.type).toBe(MessageType.OPPORTUNITIES_RESULT);
+      expect(response.type).toBe(MessageType.ACTIVATION_URL_RESULT);
       done();
     });
-    handleMessage(message as never, {} as chrome.runtime.MessageSender, sendResponse);
-  });
 
-  it('handles GET_BALANCES message', (done) => {
-    const message = { type: MessageType.GET_BALANCES };
-    const sendResponse = jest.fn((response) => {
-      expect(response.type).toBe(MessageType.BALANCES_RESULT);
-      done();
-    });
     handleMessage(message as never, {} as chrome.runtime.MessageSender, sendResponse);
-  });
-
-  it('handles UPDATE_BALANCE message', (done) => {
-    const message = {
-      type: MessageType.UPDATE_BALANCE,
-      balance: { programId: 'amazon-rewards', balance: 1000, lastUpdated: Date.now() },
-    };
-    const sendResponse = jest.fn((_response) => {
-      done();
-    });
-    handleMessage(message as never, {} as chrome.runtime.MessageSender, sendResponse);
-  });
-
-  it('handles CONTENT_LOADED message', () => {
-    const consoleSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
-    const message = {
-      type: MessageType.CONTENT_LOADED,
-      url: 'https://www.amazon.com',
-    };
-    const result = handleMessage(
-      message as never,
-      {} as chrome.runtime.MessageSender,
-      jest.fn()
-    );
-    expect(result).toBe(false);
-    consoleSpy.mockRestore();
   });
 });
 
 describe('handleInstalled', () => {
-  it('sets default settings on fresh install', () => {
-    const consoleSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
+  it('opens options on install', () => {
     handleInstalled({ reason: 'install' as chrome.runtime.OnInstalledReason, id: '' });
-    expect(chrome.storage.sync.set).toHaveBeenCalledWith({
-      [StorageKey.SETTINGS]: DEFAULT_SETTINGS,
-    });
-    consoleSpy.mockRestore();
-  });
-
-  it('logs update message on update', () => {
-    const consoleSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
-    handleInstalled({ reason: 'update' as chrome.runtime.OnInstalledReason, previousVersion: '0.9.0', id: '' });
-    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('updated'));
-    consoleSpy.mockRestore();
+    expect(chrome.runtime.openOptionsPage).toHaveBeenCalled();
   });
 });

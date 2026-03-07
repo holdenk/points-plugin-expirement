@@ -3,6 +3,12 @@ const mockStorage: Record<string, unknown> = {};
 
 const mockChrome = {
   runtime: {
+    OnInstalledReason: {
+      INSTALL: 'install',
+      UPDATE: 'update',
+      CHROME_UPDATE: 'chrome_update',
+      SHARED_MODULE_UPDATE: 'shared_module_update',
+    },
     id: 'test-extension-id',
     sendMessage: jest.fn(),
     onMessage: {
@@ -33,6 +39,7 @@ const mockChrome = {
   },
   tabs: {
     query: jest.fn(),
+    create: jest.fn(),
   },
 };
 

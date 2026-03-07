@@ -93,7 +93,7 @@ describe('UA MileagePlus flow (E2E-style)', () => {
 
     const activateButton = container.querySelector('.activate-btn') as HTMLButtonElement;
     expect(activateButton).toBeTruthy();
-    expect(activateButton.textContent).toBe('Activate');
+    expect(activateButton.textContent).toBe('Activate 🎉');
     expect(activateButton.disabled).toBe(false);
 
     activateButton.click();

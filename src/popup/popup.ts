@@ -12,6 +12,40 @@ import {
   ShoppingOpportunity,
 } from '../types/index';
 
+const CONFETTI_COLORS = ['#ff6b6b', '#feca57', '#48dbfb', '#ff9ff3', '#54a0ff', '#5f27cd', '#1dd1a1'];
+
+/** Spawns a confetti burst in the popup */
+function spawnConfetti(): void {
+  const container = document.getElementById('confetti-container');
+  if (!container) return;
+
+  const count = 30;
+  for (let i = 0; i < count; i++) {
+    const piece = document.createElement('div');
+    piece.className = 'confetti-piece';
+    const color = CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)];
+    const left = Math.random() * 100;
+    const delay = Math.random() * 0.5;
+    const size = 6 + Math.random() * 6;
+    const isCircle = Math.random() > 0.5;
+    piece.style.cssText = `
+      position: absolute;
+      top: -10px;
+      left: ${left}%;
+      width: ${size}px;
+      height: ${size}px;
+      background: ${color};
+      border-radius: ${isCircle ? '50%' : '2px'};
+      animation: confetti-fall ${1.5 + Math.random()}s ease-in ${delay}s forwards;
+    `;
+    container.appendChild(piece);
+  }
+
+  setTimeout(() => {
+    container.innerHTML = '';
+  }, 2500);
+}
+
 /** Sends a message to the background script */
 export function sendMessage(message: ExtensionMessage): Promise<ExtensionMessage> {
   return chrome.runtime.sendMessage(message);
@@ -49,6 +83,7 @@ async function activateProgram(opportunity: ShoppingOpportunity): Promise<void> 
   }
 
   await chrome.tabs.create({ url: result.activationUrl });
+  spawnConfetti();
 }
 
 function addProgramActions(card: HTMLElement, opportunity: ShoppingOpportunity): void {
@@ -57,7 +92,7 @@ function addProgramActions(card: HTMLElement, opportunity: ShoppingOpportunity):
 
   const activateButton = document.createElement('button');
   activateButton.className = 'activate-btn';
-  activateButton.textContent = 'Activate';
+  activateButton.textContent = 'Activate 🎉';
   activateButton.addEventListener('click', () => {
     void activateProgram(opportunity);
   });
@@ -98,7 +133,7 @@ export function renderOpportunities(
   if (opportunities.length === 0) {
     const empty = document.createElement('p');
     empty.className = 'empty-state';
-    empty.textContent = 'No points opportunities detected on this page.';
+    empty.textContent = 'No party deals on this page... yet! 🪩';
     container.appendChild(empty);
     return;
   }
@@ -113,7 +148,7 @@ export function renderOpportunities(
 
     const points = document.createElement('div');
     points.className = 'points';
-    points.textContent = `Earn ~${opp.estimatedPoints} points`;
+    points.textContent = `🎯 Earn ~${opp.estimatedPoints} points!`;
 
     card.appendChild(retailer);
     card.appendChild(points);
@@ -144,7 +179,7 @@ export function renderBalances(
   if (balances.length === 0) {
     const empty = document.createElement('p');
     empty.className = 'empty-state';
-    empty.textContent = 'No balances tracked yet.';
+    empty.textContent = 'No rewards stash yet -- go earn some! 🎊';
     container.appendChild(empty);
     return;
   }
@@ -230,6 +265,9 @@ export async function initPopup(): Promise<void> {
 
     if (opportunitiesResponse) {
       renderOpportunities(opportunitiesResponse.opportunities, opportunitiesList);
+      if (opportunitiesResponse.opportunities.length > 0) {
+        spawnConfetti();
+      }
     } else {
       renderOpportunities([], opportunitiesList);
     }

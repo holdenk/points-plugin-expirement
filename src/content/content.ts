@@ -7,6 +7,29 @@ import {
   ShoppingOpportunity,
 } from '../types/index';
 
+/** Injects party animation keyframes into the host page */
+function injectPartyKeyframes(): void {
+  if (document.getElementById('points-plugin-party-styles')) return;
+  const style = document.createElement('style');
+  style.id = 'points-plugin-party-styles';
+  style.textContent = `
+    @keyframes pp-party-gradient {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+    @keyframes pp-banner-slide-in {
+      0% { transform: translateY(-100%); }
+      100% { transform: translateY(0); }
+    }
+    @keyframes pp-sparkle-pulse {
+      0%, 100% { opacity: 0.7; }
+      50% { opacity: 1; }
+    }
+  `;
+  document.head.appendChild(style);
+}
+
 /** Sends a message to the background script */
 export function sendMessage(message: ExtensionMessage): Promise<ExtensionMessage> {
   return chrome.runtime.sendMessage(message);
@@ -55,7 +78,9 @@ export function createOpportunityBanner(
     'left: 0',
     'right: 0',
     'z-index: 2147483647',
-    'background: linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+    'background: linear-gradient(135deg, #ff6b6b, #feca57, #48dbfb, #ff9ff3, #54a0ff, #5f27cd)',
+    'background-size: 400% 400%',
+    'animation: pp-party-gradient 3s ease infinite, pp-banner-slide-in 0.5s ease-out',
     'color: white',
     'padding: 12px 16px',
     'font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
@@ -63,11 +88,11 @@ export function createOpportunityBanner(
     'display: flex',
     'align-items: center',
     'justify-content: space-between',
-    'box-shadow: 0 2px 8px rgba(0,0,0,0.3)',
+    'box-shadow: 0 2px 12px rgba(255, 107, 107, 0.4)',
   ].join('; ');
 
   const text = document.createElement('span');
-  text.textContent = `🎯 ${opportunity.retailerName}: Earn ~${opportunity.estimatedPoints} points on this purchase!`;
+  text.textContent = `🎉 ${opportunity.retailerName}: Earn ~${opportunity.estimatedPoints} points on this purchase! 🥳`;
 
   const closeBtn = document.createElement('button');
   closeBtn.textContent = '✕';
@@ -94,6 +119,8 @@ export function showOpportunities(opportunities: ShoppingOpportunity[]): void {
   document.getElementById('points-plugin-banner')?.remove();
 
   if (opportunities.length === 0) return;
+
+  injectPartyKeyframes();
 
   // Show the first opportunity (most relevant)
   const banner = createOpportunityBanner(opportunities[0]);

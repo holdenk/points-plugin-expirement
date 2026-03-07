@@ -19,7 +19,9 @@
       color: #333;
     }
     header {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      background: linear-gradient(135deg, #ff6b6b, #feca57, #48dbfb, #ff9ff3, #54a0ff, #5f27cd);
+      background-size: 400% 400%;
+      animation: party-gradient 3s ease infinite;
       color: white;
       padding: 16px;
       display: flex;
@@ -50,13 +52,18 @@
       padding: 12px;
       margin-bottom: 8px;
       box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .opportunity-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(255, 107, 107, 0.2);
     }
     .opportunity-card .retailer {
       font-weight: 600;
       font-size: 14px;
     }
     .opportunity-card .points {
-      color: #764ba2;
+      color: #ff6b6b;
       font-size: 13px;
       margin-top: 2px;
     }
@@ -77,14 +84,17 @@
     .activate-btn {
       border: none;
       border-radius: 6px;
-      background: #5a6be6;
+      background: linear-gradient(135deg, #ff6b6b, #feca57, #48dbfb, #ff9ff3);
+      background-size: 300% 300%;
+      animation: party-gradient 4s ease infinite;
       color: #fff;
       font-size: 12px;
       font-weight: 600;
       padding: 6px 10px;
       cursor: pointer;
+      transition: transform 0.2s;
     }
-    .activate-btn:hover { opacity: 0.9; }
+    .activate-btn:hover { transform: scale(1.08); }
     .balance-card {
       background: white;
       border-radius: 8px;
@@ -100,7 +110,12 @@
       font-size: 14px;
     }
     .balance-card .balance-value {
-      color: #667eea;
+      background: linear-gradient(90deg, #ff6b6b, #feca57, #48dbfb, #ff9ff3, #ff6b6b);
+      background-size: 200% auto;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      animation: shimmer 3s linear infinite;
       font-weight: 700;
       font-size: 16px;
     }
@@ -118,7 +133,7 @@
     }
     footer a {
       font-size: 12px;
-      color: #667eea;
+      color: #ff6b6b;
       text-decoration: none;
     }
     footer a:hover {
@@ -135,28 +150,66 @@
       padding: 8px;
       display: none;
     }
+    #confetti-container {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      overflow: hidden;
+      z-index: 9999;
+    }
+    .confetti-piece {
+      position: absolute;
+      width: 8px;
+      height: 8px;
+      top: -10px;
+      animation: confetti-fall 2s ease-in forwards;
+    }
+    @keyframes party-gradient {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+    @keyframes shimmer {
+      0% { background-position: -200% center; }
+      100% { background-position: 200% center; }
+    }
+    @keyframes confetti-fall {
+      0% { transform: translateY(-10px) rotate(0deg); opacity: 1; }
+      100% { transform: translateY(400px) rotate(720deg); opacity: 0; }
+    }
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.05); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      * { animation: none !important; transition: none !important; }
+    }
   </style>
 </head>
 <body>
   <header>
-    <span aria-hidden="true">🎯</span>
-    <h1>Points Plugin</h1>
+    <span aria-hidden="true">🎉</span>
+    <h1>Points Party! 🥳</h1>
   </header>
   <div class="content">
     <div id="loading">Loading...</div>
     <div id="error" role="alert"></div>
     <section id="opportunities-section" hidden>
-      <h2>On This Page</h2>
+      <h2>Hot Deals on This Page 🔥</h2>
       <div id="opportunities-list"></div>
     </section>
     <section id="balances-section" hidden>
-      <h2>Your Balances</h2>
+      <h2>Your Rewards Stash 💰</h2>
       <div id="balances-list"></div>
     </section>
   </div>
   <footer>
     <a href="#" id="options-link">Settings</a>
   </footer>
+  <div id="confetti-container" aria-hidden="true"></div>
   <script src="popup.js"></script>
 </body>
 </html>

@@ -15,7 +15,16 @@
       color: #333;
       background: #f8f9fa;
     }
-    h1 { font-size: 24px; margin-bottom: 12px; color: #764ba2; }
+    h1 {
+      font-size: 24px;
+      margin-bottom: 12px;
+      background: linear-gradient(135deg, #ff6b6b, #feca57, #48dbfb, #ff9ff3, #54a0ff);
+      background-size: 300% 300%;
+      animation: party-gradient 3s ease infinite;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
     p.notice {
       margin-bottom: 24px;
       font-size: 13px;
@@ -72,7 +81,9 @@
       gap: 8px;
     }
     button {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      background: linear-gradient(135deg, #ff6b6b, #feca57, #48dbfb, #ff9ff3);
+      background-size: 300% 300%;
+      animation: party-gradient 4s ease infinite;
       color: white;
       border: none;
       padding: 10px 24px;
@@ -80,23 +91,33 @@
       font-size: 14px;
       cursor: pointer;
       font-weight: 600;
+      transition: transform 0.2s;
     }
     button.secondary {
       background: #f0f2ff;
       color: #4254b5;
       border: 1px solid #c9d1ff;
     }
-    button:hover { opacity: 0.9; }
+    button:hover { transform: scale(1.05); }
     #status {
       margin-top: 12px;
-      color: #28a745;
+      color: #1dd1a1;
       font-size: 13px;
+      font-weight: 600;
       display: none;
+    }
+    @keyframes party-gradient {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      * { animation: none !important; transition: none !important; }
     }
   </style>
 </head>
 <body>
-  <h1>⚙️ Points Plugin Settings</h1>
+  <h1>🎉 Points Party Settings 🪩</h1>
   <p class="notice">Affiliate activation must always be user-initiated. This extension does not silently set affiliate cookies.</p>
   <form id="settings-form">
     <div class="form-group">
@@ -119,7 +140,7 @@
       <button type="button" class="secondary" id="add-program">Add Program</button>
       <button type="submit">Save Settings</button>
     </div>
-    <div id="status" role="status">Settings saved!</div>
+    <div id="status" role="status">Settings saved! Party on! 🎉🥳</div>
   </form>
   <script src="options.js"></script>
 </body>

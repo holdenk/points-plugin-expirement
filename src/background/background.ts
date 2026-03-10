@@ -10,10 +10,14 @@ import {
   StorageKey,
   DEFAULT_SETTINGS,
   KNOWN_PROGRAMS,
+  normalizeHostname,
+  mergeSettings,
 } from '../types/index';
-import { getAdapter } from './adapters';
+import { getAdapter, DEFAULT_PROGRAM_MERCHANT_DOMAINS } from './adapters';
 
 const OPPORTUNITY_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const DEFAULT_ESTIMATED_SPEND = 50;
+const MAX_OPPORTUNITIES = 5;
 
 interface CachedDomainsEntry {
   domains: string[];
@@ -34,10 +38,6 @@ let inMemoryOpportunityCache: OpportunityCache | null = null;
 const inFlightDomainRefresh = new Map<string, Promise<void>>();
 const inFlightOfferRefresh = new Map<string, Promise<void>>();
 
-function normalizeHostname(hostname: string): string {
-  return hostname.replace(/^www\./, '').toLowerCase();
-}
-
 function hasActiveTracking(merchantUrl: string): boolean {
   try {
     const url = new URL(merchantUrl);
@@ -53,11 +53,18 @@ function isFresh(timestamp: number): boolean {
 
 function cloneOpportunityCache(cache: OpportunityCache): OpportunityCache {
   return {
-    merchantDomainsByProgram: { ...cache.merchantDomainsByProgram },
+    merchantDomainsByProgram: Object.fromEntries(
+      Object.entries(cache.merchantDomainsByProgram).map(([programId, entry]) => [
+        programId,
+        { ...entry, domains: [...entry.domains] },
+      ])
+    ),
     offersByProgramAndStore: Object.fromEntries(
       Object.entries(cache.offersByProgramAndStore).map(([programId, storeMap]) => [
         programId,
-        { ...storeMap },
+        Object.fromEntries(
+          Object.entries(storeMap).map(([storeKey, offer]) => [storeKey, { ...offer }])
+        ),
       ])
     ),
   };
@@ -214,14 +221,7 @@ export async function upsertBalance(newBalance: PointsBalance): Promise<void> {
 export async function getSettings(): Promise<Settings> {
   const result = await chrome.storage.sync.get(StorageKey.SETTINGS);
   const stored = result[StorageKey.SETTINGS] as Partial<Settings> | undefined;
-  return {
-    ...DEFAULT_SETTINGS,
-    ...stored,
-    pointValuationsCents: {
-      ...DEFAULT_SETTINGS.pointValuationsCents,
-      ...stored?.pointValuationsCents,
-    },
-  };
+  return mergeSettings(stored);
 }
 
 /** Finds a points program matching the given URL */
@@ -251,15 +251,18 @@ async function buildOpportunityForProgram(
   program: PointsProgram,
   merchantHost: string,
   sourceUrl: string,
-  settings: Settings
+  settings: Settings,
+  pagePrice?: number
 ): Promise<ShoppingOpportunity | null> {
   const cachedDomains = await getCachedDomainsForProgram(program.id);
-  if (cachedDomains && cachedDomains.length > 0 && !cachedDomains.includes(merchantHost)) {
+  const effectiveDomains = cachedDomains ?? DEFAULT_PROGRAM_MERCHANT_DOMAINS[program.id] ?? [];
+  if (effectiveDomains.length > 0 && !effectiveDomains.includes(merchantHost)) {
     return null;
   }
 
   const cachedOffer = await getCachedOfferForProgram(program, merchantHost);
-  const estimatedPoints = calculateEstimatedPoints(program, 50, cachedOffer?.pointsPerDollar);
+  const estimatedSpend = pagePrice ?? DEFAULT_ESTIMATED_SPEND;
+  const estimatedPoints = calculateEstimatedPoints(program, estimatedSpend, cachedOffer?.pointsPerDollar);
   if (estimatedPoints < settings.minimumPointsThreshold) {
     return null;
   }
@@ -267,7 +270,7 @@ async function buildOpportunityForProgram(
   const valuation = settings.pointValuationsCents[program.id] ?? 1;
   return {
     url: sourceUrl,
-    retailerName: program.name,
+    programName: program.name,
     estimatedPoints,
     estimatedValueCents: Math.round(estimatedPoints * valuation),
     programId: program.id,
@@ -279,7 +282,8 @@ async function buildOpportunityForProgram(
  * Uses cache-first lookups and opportunistic refreshes so popup responses stay fast.
  */
 export async function findOpportunities(
-  url: string
+  url: string,
+  pagePrice?: number
 ): Promise<ShoppingOpportunity[]> {
   let merchantHost: string;
   try {
@@ -298,7 +302,7 @@ export async function findOpportunities(
     : KNOWN_PROGRAMS;
 
   const settled = await Promise.allSettled(
-    enabledPrograms.map((program) => buildOpportunityForProgram(program, merchantHost, url, settings))
+    enabledPrograms.map((program) => buildOpportunityForProgram(program, merchantHost, url, settings, pagePrice))
   );
 
   const opportunities = settled
@@ -307,7 +311,7 @@ export async function findOpportunities(
     .filter((opportunity): opportunity is ShoppingOpportunity => opportunity != null)
     .sort((a, b) => (b.estimatedValueCents ?? 0) - (a.estimatedValueCents ?? 0));
 
-  return opportunities.slice(0, 5);
+  return opportunities.slice(0, MAX_OPPORTUNITIES);
 }
 
 export async function buildActivationUrl(programId: string, merchantUrl: string): Promise<ActivationUrlResultMessage> {
@@ -356,7 +360,7 @@ export function handleMessage(
 ): boolean {
   switch (message.type) {
     case MessageType.GET_OPPORTUNITIES:
-      findOpportunities(message.url)
+      findOpportunities(message.url, message.pagePrice)
         .then((opportunities) => {
           sendResponse({
             type: MessageType.OPPORTUNITIES_RESULT,
@@ -424,7 +428,6 @@ export function handleMessage(
       return true;
 
     case MessageType.CONTENT_LOADED:
-      console.log(`Content script loaded on: ${message.url}`);
       return false;
 
     default:
@@ -440,11 +443,8 @@ export function handleInstalled(
   const updateReason = chrome.runtime.OnInstalledReason?.UPDATE ?? 'update';
 
   if (details.reason === installReason) {
-    console.log('Points Plugin installed');
     void chrome.storage.sync.set({ [StorageKey.SETTINGS]: DEFAULT_SETTINGS });
     void chrome.runtime.openOptionsPage();
-  } else if (details.reason === updateReason) {
-    console.log(`Points Plugin updated from version ${details.previousVersion ?? 'unknown'}`);
   }
 }
 

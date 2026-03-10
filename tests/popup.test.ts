@@ -29,7 +29,7 @@ describe('renderOpportunities', () => {
     const opportunities = [
       {
         url: 'https://www.nike.com',
-        retailerName: 'Rakuten',
+        programName: 'Rakuten',
         estimatedPoints: 150,
         estimatedValueCents: 150,
         programId: 'rakuten',
@@ -46,7 +46,7 @@ describe('renderOpportunities', () => {
     const opportunities = [
       {
         url: 'https://www.nike.com',
-        retailerName: 'United MileagePlus Shopping',
+        programName: 'United MileagePlus Shopping',
         estimatedPoints: 120,
         estimatedValueCents: 144,
         programId: 'united-shopping',
@@ -69,7 +69,7 @@ describe('renderOpportunities', () => {
     const opportunities = [
       {
         url: 'https://www.nike.com',
-        retailerName: 'United MileagePlus Shopping',
+        programName: 'United MileagePlus Shopping',
         estimatedPoints: 0,
         estimatedValueCents: 0,
         programId: 'united-shopping',
@@ -89,7 +89,7 @@ describe('renderOpportunities', () => {
     const opportunities = [
       {
         url: 'https://www.nike.com',
-        retailerName: 'Delta SkyMiles Shopping',
+        programName: 'Delta SkyMiles Shopping',
         estimatedPoints: 100,
         estimatedValueCents: 120,
         programId: 'delta-skymiles-shopping',
@@ -100,6 +100,7 @@ describe('renderOpportunities', () => {
 
     const activateButton = container.querySelector('.activate-btn') as HTMLButtonElement;
     expect(activateButton.disabled).toBe(true);
+    expect(activateButton.textContent).toBe('Coming Soon');
   });
 });
 

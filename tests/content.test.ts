@@ -39,7 +39,7 @@ describe('createOpportunityBanner', () => {
   it('creates a banner element with correct content', () => {
     const opportunity = {
       url: 'https://amazon.com',
-      retailerName: 'Amazon Rewards',
+      programName: 'Amazon Rewards',
       estimatedPoints: 150,
       programId: 'amazon-rewards',
     };
@@ -53,7 +53,7 @@ describe('createOpportunityBanner', () => {
     document.body.innerHTML = '';
     const opportunity = {
       url: 'https://amazon.com',
-      retailerName: 'Amazon Rewards',
+      programName: 'Amazon Rewards',
       estimatedPoints: 150,
       programId: 'amazon-rewards',
     };
@@ -69,7 +69,7 @@ describe('createOpportunityBanner', () => {
   it('sets accessibility attributes', () => {
     const opportunity = {
       url: 'https://amazon.com',
-      retailerName: 'Amazon Rewards',
+      programName: 'Amazon Rewards',
       estimatedPoints: 150,
       programId: 'amazon-rewards',
     };
@@ -93,7 +93,7 @@ describe('showOpportunities', () => {
     const opportunities = [
       {
         url: 'https://amazon.com',
-        retailerName: 'Amazon Rewards',
+        programName: 'Amazon Rewards',
         estimatedPoints: 150,
         programId: 'amazon-rewards',
       },
@@ -106,7 +106,7 @@ describe('showOpportunities', () => {
     const opp1 = [
       {
         url: 'https://amazon.com',
-        retailerName: 'Amazon Rewards',
+        programName: 'Amazon Rewards',
         estimatedPoints: 150,
         programId: 'amazon-rewards',
       },
@@ -115,7 +115,7 @@ describe('showOpportunities', () => {
     const opp2 = [
       {
         url: 'https://target.com',
-        retailerName: 'Target Circle',
+        programName: 'Target Circle',
         estimatedPoints: 50,
         programId: 'target-circle',
       },

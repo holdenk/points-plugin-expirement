@@ -14,10 +14,17 @@ import {
   KNOWN_PROGRAMS,
 } from '../src/types/index';
 
+let originalFetch: typeof global.fetch;
 
 beforeEach(() => {
   __resetOpportunityCacheForTests();
+  originalFetch = global.fetch;
 });
+
+afterEach(() => {
+  global.fetch = originalFetch;
+});
+
 describe('calculateEstimatedPoints', () => {
   it('calculates points correctly', () => {
     const program = KNOWN_PROGRAMS.find((p) => p.id === 'aa-eshopping')!;
@@ -27,6 +34,11 @@ describe('calculateEstimatedPoints', () => {
   it('supports rate overrides from refreshed offers', () => {
     const program = KNOWN_PROGRAMS.find((p) => p.id === 'aa-eshopping')!;
     expect(calculateEstimatedPoints(program, 100, 3.5)).toBe(350);
+  });
+
+  it('returns zero for zero spend', () => {
+    const program = KNOWN_PROGRAMS.find((p) => p.id === 'aa-eshopping')!;
+    expect(calculateEstimatedPoints(program, 0)).toBe(0);
   });
 });
 
@@ -91,9 +103,35 @@ describe('findOpportunities', () => {
     expect(opps.map((opp) => opp.programId).sort()).toEqual(['aa-eshopping', 'united-shopping']);
   });
 
+  it('uses programName instead of retailerName in opportunities', async () => {
+    await chrome.storage.sync.set({
+      [StorageKey.SETTINGS]: {
+        ...DEFAULT_SETTINGS,
+        enabledPrograms: ['rakuten'],
+        minimumPointsThreshold: 0,
+      },
+    });
+
+    const opps = await findOpportunities('https://www.nike.com');
+    expect(opps[0].programName).toBe('Rakuten');
+  });
+
+  it('uses page price when provided', async () => {
+    await chrome.storage.sync.set({
+      [StorageKey.SETTINGS]: {
+        ...DEFAULT_SETTINGS,
+        enabledPrograms: ['rakuten'],
+        minimumPointsThreshold: 0,
+      },
+    });
+
+    const oppsDefault = await findOpportunities('https://www.nike.com');
+    __resetOpportunityCacheForTests();
+    const oppsWithPrice = await findOpportunities('https://www.nike.com', 200);
+    expect(oppsWithPrice[0].estimatedPoints).toBeGreaterThan(oppsDefault[0].estimatedPoints);
+  });
 
   it('uses cached domains/offers on subsequent requests within TTL', async () => {
-    const originalFetch = global.fetch;
     global.fetch = jest.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.includes('/api/extension/merchant-domains')) {
@@ -126,7 +164,6 @@ describe('findOpportunities', () => {
     await findOpportunities('https://www.nike.com');
 
     expect((global.fetch as jest.Mock).mock.calls.length).toBe(2);
-    global.fetch = originalFetch;
   });
 
   it('refreshes stale cache entries opportunistically', async () => {
@@ -144,7 +181,6 @@ describe('findOpportunities', () => {
       },
     });
 
-    const originalFetch = global.fetch;
     global.fetch = jest.fn(async () => ({
       ok: true,
       json: async () => ({ domains: ['nike.com'], pointsPerDollar: 3 }),
@@ -162,11 +198,9 @@ describe('findOpportunities', () => {
     expect(opps).toHaveLength(1);
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect((global.fetch as jest.Mock).mock.calls.length).toBeGreaterThanOrEqual(1);
-
-    global.fetch = originalFetch;
   });
+
   it('continues when one backend refresh fails (non-blocking)', async () => {
-    const originalFetch = global.fetch;
     global.fetch = jest.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.includes('aadvantageeshopping.com')) {
@@ -189,8 +223,6 @@ describe('findOpportunities', () => {
     const opps = await findOpportunities('https://www.nike.com');
     expect(opps.length).toBeGreaterThan(0);
     expect(opps.some((opp) => opp.programId === 'united-shopping')).toBe(true);
-
-    global.fetch = originalFetch;
   });
 });
 
@@ -231,6 +263,42 @@ describe('handleMessage', () => {
     });
 
     handleMessage(message as never, {} as chrome.runtime.MessageSender, sendResponse);
+  });
+
+  it('handles UPDATE_BALANCE message', (done) => {
+    const message = {
+      type: MessageType.UPDATE_BALANCE,
+      balance: { programId: 'rakuten', balance: 1000, lastUpdated: Date.now() },
+    };
+
+    const sendResponse = jest.fn((response) => {
+      expect(response.type).toBe(MessageType.BALANCES_RESULT);
+      done();
+    });
+
+    handleMessage(message as never, {} as chrome.runtime.MessageSender, sendResponse);
+  });
+
+  it('handles CONTENT_LOADED message synchronously', () => {
+    const message = {
+      type: MessageType.CONTENT_LOADED,
+      url: 'https://www.nike.com',
+    };
+
+    const sendResponse = jest.fn();
+    const result = handleMessage(message as never, {} as chrome.runtime.MessageSender, sendResponse);
+
+    expect(result).toBe(false);
+    expect(sendResponse).not.toHaveBeenCalled();
+  });
+
+  it('returns false for unknown message types', () => {
+    const message = { type: 'UNKNOWN_TYPE' };
+    const sendResponse = jest.fn();
+    const result = handleMessage(message as never, {} as chrome.runtime.MessageSender, sendResponse);
+
+    expect(result).toBe(false);
+    expect(sendResponse).not.toHaveBeenCalled();
   });
 });
 

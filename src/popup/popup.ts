@@ -10,6 +10,7 @@ import {
   OpportunitiesResultMessage,
   PointsBalance,
   ShoppingOpportunity,
+  getProgramById,
 } from '../types/index';
 
 /** Sends a message to the background script */
@@ -21,10 +22,6 @@ export function sendMessage(message: ExtensionMessage): Promise<ExtensionMessage
 export async function getActiveTabUrl(): Promise<string | null> {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   return tab?.url ?? null;
-}
-
-function getProgram(programId: string): (typeof KNOWN_PROGRAMS)[number] | undefined {
-  return KNOWN_PROGRAMS.find((program) => program.id === programId);
 }
 
 async function activateProgram(opportunity: ShoppingOpportunity): Promise<void> {
@@ -62,7 +59,7 @@ function addProgramActions(card: HTMLElement, opportunity: ShoppingOpportunity):
     void activateProgram(opportunity);
   });
 
-  const program = getProgram(opportunity.programId);
+  const program = getProgramById(opportunity.programId);
   if (program?.signupUrl) {
     const signupLink = document.createElement('a');
     signupLink.href = program.signupUrl;
@@ -83,6 +80,7 @@ function addProgramActions(card: HTMLElement, opportunity: ShoppingOpportunity):
 
   if (!program?.signupUrl && !program?.loginUrl) {
     activateButton.disabled = true;
+    activateButton.textContent = 'Coming Soon';
     activateButton.title = 'Activation is unavailable for this program right now.';
   }
 
@@ -109,7 +107,7 @@ export function renderOpportunities(
 
     const retailer = document.createElement('div');
     retailer.className = 'retailer';
-    retailer.textContent = opp.retailerName;
+    retailer.textContent = opp.programName;
 
     const points = document.createElement('div');
     points.className = 'points';

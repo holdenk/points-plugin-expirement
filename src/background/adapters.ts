@@ -1,15 +1,16 @@
 import {
   DEFAULT_SETTINGS,
-  KNOWN_PROGRAMS,
   OfferSnapshot,
   ProgramAdapter,
-  Settings,
   StorageKey,
+  getProgramById,
+  mergeSettings,
+  normalizeHostname,
 } from '../types/index';
 
 const OFFER_REFRESH_TIMEOUT_MS = 1500;
 
-const DEFAULT_PROGRAM_MERCHANT_DOMAINS: Record<string, string[]> = {
+export const DEFAULT_PROGRAM_MERCHANT_DOMAINS: Record<string, string[]> = {
   'aa-eshopping': ['nike.com', 'macys.com', 'bestbuy.com'],
   'united-shopping': ['nike.com', 'macys.com', 'bestbuy.com'],
   'alaska-atmos': ['nike.com', 'target.com'],
@@ -20,10 +21,6 @@ const DEFAULT_PROGRAM_MERCHANT_DOMAINS: Record<string, string[]> = {
   'capital-one-shopping': ['nike.com', 'bestbuy.com'],
   'mr-rebates': ['nike.com', 'homedepot.com'],
 };
-
-function getProgramById(programId: string): (typeof KNOWN_PROGRAMS)[number] | undefined {
-  return KNOWN_PROGRAMS.find((program) => program.id === programId);
-}
 
 function buildGenericActivationUrl(baseUrl: string | undefined, merchantUrl: string): string {
   if (!baseUrl) {
@@ -51,10 +48,6 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T
   });
 }
 
-function normalizeHostname(hostname: string): string {
-  return hostname.replace(/^www\./, '').toLowerCase();
-}
-
 export class GenericProgramAdapter implements ProgramAdapter {
   id: string;
   displayName: string;
@@ -73,15 +66,8 @@ export class GenericProgramAdapter implements ProgramAdapter {
 
   async isEnabled(): Promise<boolean> {
     const result = await chrome.storage.sync.get(StorageKey.SETTINGS);
-    const stored = (result[StorageKey.SETTINGS] as Partial<Settings> | undefined) ?? undefined;
-    const settings: Settings = {
-      ...DEFAULT_SETTINGS,
-      ...stored,
-      pointValuationsCents: {
-        ...DEFAULT_SETTINGS.pointValuationsCents,
-        ...stored?.pointValuationsCents,
-      },
-    };
+    const stored = (result[StorageKey.SETTINGS] as Partial<typeof DEFAULT_SETTINGS> | undefined) ?? undefined;
+    const settings = mergeSettings(stored);
 
     if (settings.enabledPrograms.length === 0) {
       return true;
@@ -91,7 +77,9 @@ export class GenericProgramAdapter implements ProgramAdapter {
 
   buildActivationUrl(_storeKey: string, merchantUrl: string): Promise<string> {
     const program = getProgramById(this.id);
-    return Promise.resolve(buildGenericActivationUrl(program?.loginUrl ?? program?.signupUrl, merchantUrl));
+    // TODO: replace with real activation endpoints — loginUrl/signupUrl are placeholders
+    const baseUrl = program?.activationBaseUrl ?? program?.loginUrl ?? program?.signupUrl;
+    return Promise.resolve(buildGenericActivationUrl(baseUrl, merchantUrl));
   }
 
   detectAttributionRisk(merchantUrl: string): Promise<'none' | 'possible_affiliate_tag'> {
@@ -153,6 +141,14 @@ export class GenericProgramAdapter implements ProgramAdapter {
   }
 }
 
+const adapterCache = new Map<string, ProgramAdapter>();
+
 export function getAdapter(programId: string): ProgramAdapter {
-  return new GenericProgramAdapter(programId);
+  const cached = adapterCache.get(programId);
+  if (cached) {
+    return cached;
+  }
+  const adapter = new GenericProgramAdapter(programId);
+  adapterCache.set(programId, adapter);
+  return adapter;
 }

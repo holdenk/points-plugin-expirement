@@ -23,14 +23,14 @@ describe('UA MileagePlus flow (E2E-style)', () => {
           opportunities: [
             {
               url: 'https://www.nike.com/',
-              retailerName: 'AA AAdvantage eShopping',
+              programName: 'AA AAdvantage eShopping',
               estimatedPoints: 110,
               estimatedValueCents: 154,
               programId: 'aa-eshopping',
             },
             {
               url: 'https://www.nike.com/',
-              retailerName: 'United MileagePlus Shopping',
+              programName: 'United MileagePlus Shopping',
               estimatedPoints: 100,
               estimatedValueCents: 120,
               programId: 'united-shopping',
@@ -82,7 +82,7 @@ describe('UA MileagePlus flow (E2E-style)', () => {
       [
         {
           url: 'https://www.nike.com/',
-          retailerName: 'United MileagePlus Shopping',
+          programName: 'United MileagePlus Shopping',
           estimatedPoints: 100,
           estimatedValueCents: 120,
           programId: 'united-shopping',

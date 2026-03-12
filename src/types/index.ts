@@ -17,6 +17,8 @@ export interface PointsProgram {
   type: ProgramType;
   signupUrl?: string;
   loginUrl?: string;
+  // TODO: replace with real activation endpoints per program
+  activationBaseUrl?: string;
 }
 
 export interface OfferSnapshot {
@@ -52,7 +54,7 @@ export interface PointsBalance {
 /** Represents a detected shopping opportunity on a page */
 export interface ShoppingOpportunity {
   url: string;
-  retailerName: string;
+  programName: string;
   estimatedPoints: number;
   estimatedValueCents?: number;
   programId: string;
@@ -78,6 +80,7 @@ export interface BaseMessage {
 export interface GetOpportunitiesMessage extends BaseMessage {
   type: MessageType.GET_OPPORTUNITIES;
   url: string;
+  pagePrice?: number;
 }
 
 export interface OpportunitiesResultMessage extends BaseMessage {
@@ -160,6 +163,28 @@ export const DEFAULT_SETTINGS: Settings = {
     'mr-rebates': 1,
   },
 };
+
+/** Normalizes a hostname by stripping www. prefix and lowercasing */
+export function normalizeHostname(hostname: string): string {
+  return hostname.replace(/^www\./, '').toLowerCase();
+}
+
+/** Finds a known program by its ID */
+export function getProgramById(programId: string): PointsProgram | undefined {
+  return KNOWN_PROGRAMS.find((program) => program.id === programId);
+}
+
+/** Merges partial stored settings with defaults, preserving nested pointValuationsCents */
+export function mergeSettings(stored: Partial<Settings> | undefined): Settings {
+  return {
+    ...DEFAULT_SETTINGS,
+    ...stored,
+    pointValuationsCents: {
+      ...DEFAULT_SETTINGS.pointValuationsCents,
+      ...stored?.pointValuationsCents,
+    },
+  };
+}
 
 export const KNOWN_PROGRAMS: PointsProgram[] = [
   {

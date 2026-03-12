@@ -67,7 +67,7 @@ export function createOpportunityBanner(
   ].join('; ');
 
   const text = document.createElement('span');
-  text.textContent = `🎯 ${opportunity.retailerName}: Earn ~${opportunity.estimatedPoints} points on this purchase!`;
+  text.textContent = `🎯 ${opportunity.programName}: Earn ~${opportunity.estimatedPoints} points on this purchase!`;
 
   const closeBtn = document.createElement('button');
   closeBtn.textContent = '✕';
@@ -115,9 +115,11 @@ export async function init(): Promise<void> {
   }
 
   // Request opportunities for the current page
+  const pagePrice = extractPagePrice();
   const requestMessage: GetOpportunitiesMessage = {
     type: MessageType.GET_OPPORTUNITIES,
     url: window.location.href,
+    ...(pagePrice != null ? { pagePrice } : {}),
   };
 
   try {

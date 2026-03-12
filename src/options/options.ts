@@ -3,20 +3,14 @@ import {
   StorageKey,
   DEFAULT_SETTINGS,
   KNOWN_PROGRAMS,
+  mergeSettings,
 } from '../types/index';
 
 /** Gets settings from storage */
 export async function getSettings(): Promise<Settings> {
   const result = await chrome.storage.sync.get(StorageKey.SETTINGS);
   const stored = result[StorageKey.SETTINGS] as Partial<Settings> | undefined;
-  return {
-    ...DEFAULT_SETTINGS,
-    ...stored,
-    pointValuationsCents: {
-      ...DEFAULT_SETTINGS.pointValuationsCents,
-      ...stored?.pointValuationsCents,
-    },
-  };
+  return mergeSettings(stored);
 }
 
 /** Saves settings to storage */
@@ -82,7 +76,7 @@ export function populateForm(settings: Settings): void {
     minPointsEl.value = String(settings.minimumPointsThreshold);
 
   if (programsList) {
-    programsList.innerHTML = '';
+    programsList.replaceChildren();
     KNOWN_PROGRAMS.forEach((program) => {
       const row = document.createElement('div');
       row.className = 'program-row';
